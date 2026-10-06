@@ -32,6 +32,25 @@
   </div>
 </section>
 
+<section class="intro card bg-base-200 shadow-lg mt-6">
+  <div class="card-body space-y-3 text-sm">
+    <h3 class="card-title text-xl">Install from this server</h3>
+    <p class="hint text-base-content/70">Add this server to your Gemfile, then paste gem lines from below into the block</p>
+    <pre class="command snippet rounded-box bg-base-100 p-4 font-mono"><code>source "<%= h(url("/")) %>" do
+  gem "..."
+end</code></pre>
+    <p class="hint text-base-content/70">If you needed credentials to get to this page</p>
+    <pre class="command rounded-box bg-base-100 p-4 font-mono"><code>bundle config set --global <%= h(URI(url("/")).host) %> username:password</code></pre>
+    <p class="hint text-base-content/70">Without Bundler</p>
+    <pre class="command rounded-box bg-base-100 p-4 font-mono"><code>gem install GEMNAME --source <%= h(url("/")) %></code></pre>
+    <% if @allow_upload %>
+      <p class="hint text-base-content/70">and then ...</p>
+      <pre class="command rounded-box bg-base-100 p-4 font-mono"><code>gem install geminabox
+gem inabox [gemfile]</code></pre>
+    <% end %>
+  </div>
+</section>
+
 <% if @gems.any? %>
   <div class="mt-10 rounded-box border border-base-300 bg-base-100 p-4 text-sm text-base-content/70">
     <div class="flex flex-wrap items-center justify-between gap-4">

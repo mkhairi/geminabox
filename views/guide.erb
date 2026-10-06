@@ -9,10 +9,14 @@
       <div class="card-body space-y-4">
         <h3 class="card-title text-xl">Add this gem server</h3>
         <div class="rounded-box bg-base-100 p-4 font-mono text-sm">
-          <p># Without credentials</p>
-          <pre><code>gem sources -a <%= url "/" %></code></pre>
+          <p># Gemfile: scope gems to this server</p>
+          <pre><code>source "<%= h(url("/")) %>" do
+  gem "..."
+end</code></pre>
           <p class="mt-3"># With credentials</p>
-          <pre><code>gem sources -a <%= url.to_s.gsub('://','://username:password@') %></code></pre>
+          <pre><code>bundle config set --global <%= h(URI(url("/")).host) %> username:password</code></pre>
+          <p class="mt-3"># Without Bundler</p>
+          <pre><code>gem install GEMNAME --source <%= h(url("/")) %></code></pre>
         </div>
       </div>
     </div>
