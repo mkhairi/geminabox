@@ -3,16 +3,55 @@
 require 'reentrant_flock'
 require 'rubygems/util'
 require 'rss'
+require 'ipaddr'
+require 'yaml'
+require 'fileutils'
 
 module Geminabox
 
   class Server < Sinatra::Base
+    LOGIN_EXEMPT_PATHS = [
+      %r{\A/login},
+      %r{\A/logout},
+      %r{\A/atom\.xml\z},
+      %r{\A/api/},
+      %r{\A/gems/.*\.gem\z},
+      %r{\A/versions\z},
+      %r{\A/names\z},
+      %r{\A/info},
+      %r{\A/master\.js\z},
+      %r{\A/favicon\.ico\z},
+      %r{\A/robots\.txt\z}
+    ].freeze
+
     enable :static, :methodoverride
     set :public_folder, Geminabox.public_folder
     set :views, Geminabox.views
     set :host_authorization, { permitted_hosts: [] }
 
     use Hostess
+
+    helpers do
+      def logged_in?
+        session[:logged_in]
+      end
+
+      def current_user
+        session[:username]
+      end
+
+      def allow_upload?
+        self.class.allow_upload? && ip_authorized_for_privileged_actions?(request&.ip)
+      end
+
+      def ui_username
+        settings.respond_to?(:ui_username) ? settings.ui_username : ENV["ADMIN_USER"]
+      end
+
+      def ui_password
+        settings.respond_to?(:ui_password) ? settings.ui_password : ENV["ADMIN_PASS"]
+      end
+    end
 
     class << self
       def disallow_replace?
@@ -92,13 +131,60 @@ module Geminabox
       headers 'X-Powered-By' => "geminabox #{Geminabox::VERSION}"
     end
 
+    before do
+      next unless request.get?
+      next if login_exempt_path?(request.path_info)
+      next if logged_in?
+      next if ip_whitelisted?(request.ip)
+
+      session[:return_to] = request.fullpath
+      redirect url("/login")
+    end
+
+    get '/login' do
+      if logged_in?
+        redirect url("/")
+      else
+        @login_error = session.delete(:login_error)
+        erb :login, layout: :layout_login
+      end
+    end
+
+    post '/login' do
+      if params[:username].to_s == ui_username && params[:password].to_s == ui_password
+        session[:logged_in] = true
+        session[:username] = params[:username]
+        target = session.delete(:return_to)
+        if target && !login_exempt_path?(target)
+          redirect target
+        else
+          redirect url("/")
+        end
+      else
+        @login_error = "Invalid username or password"
+        status 401
+        erb :login, layout: :layout_login
+      end
+    end
+
+    post '/logout' do
+      session.clear
+      redirect url("/login")
+    end
+
     get '/' do
       content_type :html
       @gems = load_gems
       @index_gems = index_gems(@gems)
-      @allow_upload = self.class.allow_upload?
-      @allow_delete = self.class.allow_delete?
+      @allow_upload = allow_upload?
+      @allow_delete = self.class.allow_delete? && ip_authorized_for_privileged_actions?(request.ip)
       erb :index
+    end
+
+    get '/guide' do
+      content_type :html
+      @allow_upload = allow_upload?
+      erb :guide
     end
 
     get '/atom.xml' do
@@ -127,6 +213,36 @@ module Geminabox
       path = self.class.compact_indexer.info_path(params[:name])
       heal_missing_info(params[:name], path) unless File.file?(path)
       serve_compact_file(path)
+    end
+
+    get '/admin/ips' do
+      content_type :html
+      @ip_whitelist = normalize_ip_entries(persistent_ip_whitelist)
+      @env_ip_whitelist = normalize_ip_entries(env_ip_whitelist)
+      @allow_upload = allow_upload?
+      erb :admin_ips
+    end
+
+    post '/admin/ips' do
+      entry = params[:entry].to_s.strip
+      unless entry.empty?
+        entries = persistent_ip_whitelist
+        entries << entry
+        entries = normalize_ip_entries(entries)
+        save_persistent_ip_whitelist(entries)
+      end
+      redirect url('/admin/ips')
+    end
+
+    post '/admin/ips/delete' do
+      entry = params[:entry].to_s.strip
+      unless entry.empty?
+        entries = persistent_ip_whitelist
+        if entries.delete(entry)
+          save_persistent_ip_whitelist(normalize_ip_entries(entries))
+        end
+      end
+      redirect url('/admin/ips')
     end
 
     get '/api/v1/dependencies' do
@@ -163,7 +279,7 @@ module Geminabox
     get '/gems/:gemname' do
       gems = Hash[load_gems.by_name]
       @gem = gems[params[:gemname]]
-      @allow_delete = self.class.allow_delete?
+      @allow_delete = self.class.allow_delete? && ip_authorized_for_privileged_actions?(request.ip)
       halt 404 unless @gem
       content_type :html
       erb :gem
@@ -244,6 +360,63 @@ module Geminabox
     end
 
   private
+
+    def login_exempt_path?(path)
+      path_only = path.to_s.split("?", 2).first
+      LOGIN_EXEMPT_PATHS.any? { |pattern| pattern.match?(path_only) }
+    end
+
+    def ip_whitelisted?(ip)
+      whitelist_entries.any? do |entry|
+        if entry.include?("/")
+          IPAddr.new(entry).include?(ip)
+        else
+          entry == ip
+        end
+      rescue IPAddr::InvalidAddressError
+        false
+      end
+    end
+
+    def ip_authorized_for_privileged_actions?(ip)
+      return false unless ip
+      ip_whitelisted?(ip)
+    end
+
+    def whitelist_entries
+      @whitelist_entries ||= begin
+        entries = persistent_ip_whitelist + env_ip_whitelist
+        normalize_ip_entries(entries)
+      end
+    end
+
+    def env_ip_whitelist
+      env_value = ENV.fetch("GEMINABOX_IP_WHITELIST", nil)
+      return [] if env_value.nil? || env_value.strip.empty?
+      env_value.split(/\s*,\s*/)
+    end
+
+    def persistent_ip_whitelist
+      return [] unless File.exist?(ip_whitelist_file)
+      data = YAML.load_file(ip_whitelist_file)
+      normalize_ip_entries(Array(data).map(&:to_s))
+    rescue Psych::SyntaxError
+      []
+    end
+
+    def save_persistent_ip_whitelist(entries)
+      FileUtils.mkdir_p(File.dirname(ip_whitelist_file))
+      File.write(ip_whitelist_file, entries.to_yaml)
+      @whitelist_entries = nil
+    end
+
+    def normalize_ip_entries(entries)
+      entries.map { |e| e.to_s.strip }.reject(&:empty?).uniq.sort
+    end
+
+    def ip_whitelist_file
+      File.join(Geminabox.data, 'config', 'ip_whitelist.yml')
+    end
 
     def serialize_update(&block)
       with_rlock(&block)

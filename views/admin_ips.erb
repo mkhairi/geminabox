@@ -1,0 +1,85 @@
+<section class="space-y-6">
+  <header class="space-y-2">
+    <h2 class="text-3xl font-bold">IP Access Control</h2>
+    <p class="text-base-content/70">
+      Manage IP addresses and CIDR ranges that bypass login. Entries here persist to <code>config/ip_whitelist.yml</code>.
+    </p>
+  </header>
+
+  <div class="card bg-base-200 shadow-lg">
+    <div class="card-body space-y-4">
+      <h3 class="card-title text-xl">Add IP or CIDR</h3>
+      <form class="flex flex-col gap-3 sm:flex-row" method="post" action="<%= url("/admin/ips") %>">
+        <label class="form-control w-full sm:w-auto flex-1">
+          <span class="label-text font-semibold">IP address or range</span>
+          <input class="input input-bordered w-full" type="text" name="entry" placeholder="e.g. 192.168.1.5 or 10.0.0.0/8" required />
+        </label>
+        <div class="flex items-end">
+          <button class="btn btn-primary" type="submit">Add</button>
+        </div>
+      </form>
+      <% if @env_ip_whitelist.any? %>
+        <div class="alert alert-info text-sm">
+          <div>
+            <span class="font-semibold">Environment whitelist:</span>
+            <span class="font-mono"><%= @env_ip_whitelist.join(", ") %></span>
+          </div>
+          <div class="text-xs text-base-content/60">
+            These entries come from <code>GEMINABOX_IP_WHITELIST</code> and cannot be edited here.
+          </div>
+        </div>
+      <% else %>
+        <p class="text-xs text-base-content/60">
+          Environment entries from <code>GEMINABOX_IP_WHITELIST</code> are applied automatically and cannot be edited here.
+        </p>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="card bg-base-200 shadow-lg">
+    <div class="card-body space-y-4">
+      <h3 class="card-title text-xl">Whitelisted entries</h3>
+      <% if @ip_whitelist.any? %>
+        <div class="overflow-x-auto">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Entry</th>
+                <th class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @ip_whitelist.each do |entry| %>
+                <tr>
+                  <td class="font-mono text-sm"><%= entry %></td>
+                  <td class="text-right">
+                    <form method="post" action="<%= url("/admin/ips/delete") %>" onsubmit="return confirm('Remove <%= entry %>?');">
+                      <input type="hidden" name="entry" value="<%= entry %>" />
+                      <button class="btn btn-sm btn-error" type="submit">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% else %>
+        <div class="alert alert-info">
+          <span>No persistent IP entries yet.</span>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <footer class="flex flex-wrap items-center justify-between gap-4 text-sm text-base-content/70">
+    <a class="btn btn-ghost" href="<%= url("/") %>">← Back to index</a>
+    <div class="space-y-1">
+      <p>
+        Persistent entries are stored at <code><%= File.join(Geminabox.data, 'config', 'ip_whitelist.yml') %></code>.
+      </p>
+      <p>
+        To manage via environment, set <code>GEMINABOX_IP_WHITELIST</code> with comma-separated IPs or CIDR ranges.
+      </p>
+    </div>
+  </footer>
+</section>

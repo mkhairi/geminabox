@@ -1,30 +1,127 @@
 <!DOCTYPE html>
-<html>
+<html data-theme="light">
   <head>
     <title>Gem in a Box</title>
-    <link rel="stylesheet" href="<%= url "/master.css", false %>" type="text/css" media="screen">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
     <link href="<%= url "/atom.xml", false %>" type="application/atom+xml" rel="alternate" title="Atom Feed">
+    <script>
+      window.tailwind = window.tailwind || {};
+      window.tailwind.config = { theme: { extend: {} } };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
   </head>
-  <body>
-    <div id="content">
-      <h1>Gem in a Box</h1>
-      <%= yield %>
-    </div>
-    <% if @allow_delete %>
-    <dialog id="delete-confirm">
-      <div class="delete-confirm-body">
-        <div class="accent"></div>
-        <div>
-          <h3></h3>
-          <p></p>
+  <body class="min-h-screen bg-base-200 text-base-content flex flex-col" data-page-theme>
+    <nav class="navbar fixed top-0 z-50 border-b border-base-300 bg-base-100/90 backdrop-blur">
+      <div class="container mx-auto flex max-w-6xl flex-wrap items-center justify-between px-4 py-2">
+        <a href="<%= url("/") %>" class="flex items-center gap-2">
+          <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-6 w-6 stroke-current text-primary">
+              <path d="M12 3L3 9l9 12 9-12-9-6Z" stroke-width="1.5" stroke-linejoin="round"></path>
+              <path d="M12 3 9 9l3 12m0-12 3-6" stroke-width="1.5" stroke-linejoin="round"></path>
+            </svg>
+          </span>
+          <div>
+            <span class="text-lg font-semibold leading-tight">Gem in a Box</span>
+            <p class="text-xs text-base-content/60">Your private RubyGems host</p>
+          </div>
+        </a>
+        <div class="flex flex-wrap items-center gap-3">
+          <label class="swap swap-rotate">
+            <input type="checkbox" id="theme-toggle">
+            <svg class="swap-on h-6 w-6 fill-current text-warning" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <path d="M5.64 17.657A9 9 0 0018 6 7 7 0 115.64 17.657zm0 0L4 19"></path>
+            </svg>
+            <svg class="swap-off h-6 w-6 fill-current text-warning" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path>
+            </svg>
+          </label>
+          <% if defined?(logged_in?) && logged_in? %>
+            <a class="btn btn-ghost btn-sm" href="<%= url("/guide") %>">Guide</a>
+            <a class="btn btn-ghost btn-sm" href="<%= url("/admin/ips") %>">IP Access</a>
+            <% if (defined?(allow_upload?) && allow_upload?) || @allow_upload %>
+              <a class="btn btn-primary btn-sm" href="<%= url("/upload") %>">Upload</a>
+            <% end %>
+            <form method="post" action="<%= url("/logout") %>">
+              <button class="btn btn-outline btn-sm" type="submit">Log out</button>
+            </form>
+          <% else %>
+            <a class="btn btn-primary btn-sm" href="<%= url("/login") %>">Sign in</a>
+          <% end %>
         </div>
       </div>
-      <div class="delete-confirm-actions">
-        <button type="button" class="cancel">Cancel</button>
-        <button type="button" class="danger">Delete this version</button>
+    </nav>
+
+    <div class="flex-1 pt-24">
+      <div class="container mx-auto max-w-6xl px-4 pb-16">
+        <main class="card bg-base-100 shadow-xl">
+          <div class="card-body space-y-6">
+            <%= yield %>
+          </div>
+        </main>
+      </div>
+      <footer class="border-t border-base-300 bg-base-100/80 py-6">
+        <div class="container mx-auto flex max-w-6xl flex-col justify-between gap-4 px-4 text-sm text-base-content/70 sm:flex-row sm:items-center">
+          <div class="flex flex-col gap-2">
+            <span>© <%= Time.now.year %> Gem in a Box</span>
+            <% if defined?(logged_in?) && logged_in? %>
+              <span class="text-xs uppercase tracking-[0.3em] text-base-content/60">Signed in as <%= h(current_user) %></span>
+            <% end %>
+            <% if request && request.ip %>
+              <span class="text-xs text-base-content/60">Your IP: <%= h(request.ip) %></span>
+            <% end %>
+          </div>
+          <div class="flex items-center gap-4">
+            <a class="link link-hover" href="<%= url("/guide") %>">Guide</a>
+            <a class="link link-hover" href="https://github.com/geminabox/geminabox" target="_blank" rel="noopener">Project Docs</a>
+          </div>
+        </div>
+      </footer>
+    </div>
+    <% if @allow_delete %>
+    <dialog id="delete-confirm" class="modal">
+      <div class="modal-box space-y-4">
+        <h3 class="text-lg font-bold"></h3>
+        <p class="text-sm text-base-content/70"></p>
+        <div class="modal-action">
+          <button type="button" class="cancel btn btn-ghost">Cancel</button>
+          <button type="button" class="danger btn btn-error">Delete this version</button>
+        </div>
       </div>
     </dialog>
     <% end %>
+
+    <script>
+      (function() {
+        const STORAGE_KEY = "geminabox-theme";
+        const root = document.documentElement;
+        const body = document.querySelector("body[data-page-theme]");
+        const toggle = document.getElementById("theme-toggle");
+
+        function applyTheme(theme) {
+          root.setAttribute("data-theme", theme);
+          if (body) {
+            body.dataset.pageTheme = theme;
+          }
+          if (toggle) {
+            toggle.checked = theme === "dark";
+          }
+        }
+
+        const storedTheme = localStorage.getItem(STORAGE_KEY);
+        const defaultTheme = storedTheme || "light";
+        applyTheme(defaultTheme);
+
+        if (toggle) {
+          toggle.addEventListener("change", (event) => {
+            const theme = event.target.checked ? "dark" : "light";
+            localStorage.setItem(STORAGE_KEY, theme);
+            applyTheme(theme);
+          });
+        }
+      })();
+    </script>
     <script type="text/javascript" src="<%= url "/master.js", false %>"></script>
   </body>
 </html>

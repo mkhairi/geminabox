@@ -1,57 +1,98 @@
-<div class="intro">
-  <p class="hint">Add this server to your Gemfile, then paste gem lines from below into the block</p>
-  <code class="command snippet">source "<%= h(url("/")) %>" do
-  gem "..."
-end</code>
-  <p class="hint">If you needed credentials to get to this page</p>
-  <code class="command">bundle config set --global <%= h(URI(url("/")).host) %> username:password</code>
-  <p class="hint">Without Bundler</p>
-  <code class="command">gem install GEMNAME --source <%= h(url("/")) %></code>
-  <% if @allow_upload %>
-  <p class="hint">and then ...</p>
-  <code class="command">gem install geminabox<br />gem inabox [gemfile]</code>
-  <% end %>
-</div>
+<% total_gems = @gems.by_name.size %>
+<% total_releases = @gems.count %>
+
+<section class="space-y-6 text-left">
+  <div class="hero rounded-2xl bg-gradient-to-br from-primary/10 via-secondary/5 to-base-200">
+    <div class="hero-content flex-col items-start gap-8 lg:flex-row">
+      <div class="max-w-xl space-y-4">
+        <h2 class="text-3xl font-bold leading-tight md:text-4xl">Manage your private gems library with confidence.</h2>
+        <p class="text-base-content/70">
+          Browse recent releases, download any version, and keep your team’s RubyGems in one secure place. Need setup instructions? Head over to the guide for CLI walkthroughs and automation tips.
+        </p>
+        <div class="flex flex-wrap gap-3">
+          <a class="btn btn-primary" href="<%= url("/guide") %>">View Guide</a>
+          <% if @allow_upload %>
+            <a class="btn btn-outline" href="<%= url("/upload") %>">Upload Gem</a>
+          <% end %>
+        </div>
+      </div>
+      <div class="stats stats-vertical shadow">
+        <div class="stat">
+          <div class="stat-title">Published gems</div>
+          <div class="stat-value text-primary"><%= total_gems %></div>
+          <div class="stat-desc">Total unique packages</div>
+        </div>
+        <div class="stat">
+          <div class="stat-title">Releases indexed</div>
+          <div class="stat-value text-secondary"><%= total_releases %></div>
+          <div class="stat-desc">All versions available</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
 <% if @gems.any? %>
-  <% if @allow_upload %><p class="upload-link"><a href="<%= url("/upload") %>">Upload Another Gem</a></p><% end %>
-
-  <nav id="alpha_index">
-    <% ("a".."z").each do |i| %>
-      <% if @index_gems.include?(i) %><a href="#jump_<%= i %>"><%= i %></a><% else %><span><%= i %></span><% end %>
-    <% end %>
-  </nav>
-
-  <ul class="gemlist">
-
-    <% @gems.by_name do |name, versions| %>
-      <li <%= %{id="jump_#{name[0..0].downcase}"} if @index_gems.delete(name[0..0].downcase) %> class="gem-card">
-        <div class="card-header" id="gem_<%= h(name) %>">
-          <h2><%= h(name) %> (<%= h(versions.count == 1 ? versions.first.number : "#{versions.oldest.number} - #{versions.newest.number}") %>)<a class="permalink" href="#gem_<%= h(name) %>" title="Permalink to <%= h(name) %>" aria-label="Permalink to <%= h(name) %>"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 1 1 0 10h-2"></path><line x1="8" y1="12" x2="16" y2="12"></line></svg></a></h2>
-        </div>
-        <div class="card-body">
-          <% versions.each.reverse_each.first(5).each do |version| %>
-            <%= erb :_version_row, layout: false, locals: { version: version } %>
+  <div class="mt-10 rounded-box border border-base-300 bg-base-100 p-4 text-sm text-base-content/70">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <span class="font-semibold uppercase tracking-[0.3em] text-xs text-base-content/60">Browse by name</span>
+      <div class="flex flex-wrap gap-2 text-sm font-semibold">
+        <% ("a".."z").each do |letter| %>
+          <% if @index_gems.include?(letter) %>
+            <a class="btn btn-ghost btn-xs uppercase" href="#jump_<%= letter %>"><%= letter %></a>
+          <% else %>
+            <span class="btn btn-ghost btn-xs disabled opacity-30 uppercase"><%= letter %></span>
           <% end %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-8 grid gap-6">
+    <% @gems.by_name do |name, versions| %>
+      <section <%= %{id="jump_#{name[0..0].downcase}"} if @index_gems.delete(name[0..0].downcase) %> class="card bg-base-200 shadow-lg">
+        <div class="card-body space-y-4">
+          <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="card-title text-2xl"><%= h(name) %></h2>
+              <p class="text-sm text-base-content/60">Latest release <%= h(versions.newest.number) %></p>
+            </div>
+            <span class="badge badge-outline badge-lg">
+              <%= h(versions.count == 1 ? versions.first.number : "#{versions.oldest.number} – #{versions.newest.number}") %>
+            </span>
+          </header>
+
+          <div class="space-y-3">
+            <% versions.each.reverse_each.first(5).each do |version| %>
+              <%= erb :_version_row, layout: false, locals: { version: version } %>
+            <% end %>
+          </div>
 
           <% if versions.count > 5 %>
-            <div class="more-link"><a href="<%= h(url("/gems/#{name}")) %>">Older versions...</a></div>
+            <div>
+              <a class="link link-primary" href="<%= h(url("/gems/#{name}")) %>">View older versions</a>
+            </div>
           <% end %>
-        </div>
 
-        <div class="card-footer">
-          <% newest_gem = versions.newest %>
-          <% if spec = spec_for(name, newest_gem.number, newest_gem.platform) %>
-            <p><%= h(spec.description) %></p>
-            <p class="author">– <%= spec.authors.map do |author|
-              "<a href='#{href(spec.homepage)}'>#{h(author)}</a>"
-            end.join(', ') %></p>
-          <% end %>
+          <div class="rounded-box border border-dashed border-base-300 bg-base-100/70 p-4 text-sm leading-relaxed">
+            <% newest_gem = versions.newest %>
+            <% if spec = spec_for(name, newest_gem.number, newest_gem.platform) %>
+              <p><%= h(spec.description) %></p>
+              <p class="mt-2 text-base-content/70">
+                — <%= spec.authors.map do |author|
+                  "<a class='link link-secondary' href='#{href(spec.homepage)}'>#{h(author)}</a>"
+                end.join(', ') %>
+              </p>
+            <% else %>
+              <p class="text-base-content/60">No description available.</p>
+            <% end %>
+          </div>
         </div>
-
-      </li>
+      </section>
     <% end %>
-  </ul>
+  </div>
+<% else %>
+  <div class="alert alert-warning">
+    <span>No gems uploaded yet. Get started by visiting the guide or uploading your first gem.</span>
+  </div>
 <% end %>
-
-<% if @allow_upload %><p class="upload-link"><a href="<%= url("/upload") %>">Upload Another Gem</a></p><% end %>

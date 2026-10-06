@@ -1,29 +1,38 @@
-<p class="back-link">
-<a href="<%= url("/") %>">Back to Gem Index</a>
-</p>
+<div class="mb-6">
+  <a class="btn btn-ghost btn-sm" href="<%= url("/") %>">← Back to Gem Index</a>
+</div>
 
-<ul class="gemlist">
+<div class="space-y-6">
   <% @gem.by_name do |name, versions| %>
-    <li class="gem-card">
-      <div class="card-header">
-        <h2><%= h(name) %> (<%= h(versions.count == 1 ? versions.first.number : "#{versions.oldest.number} - #{versions.newest.number}") %>)</h2>
-      </div>
-      <div class="card-body">
-        <% versions.each.reverse_each do |version| %>
-          <%= erb :_version_row, layout: false, locals: { version: version } %>
-        <% end %>
-      </div>
+    <section class="card bg-base-200 shadow-lg">
+      <div class="card-body space-y-4">
+        <header class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 class="card-title text-3xl"><%= h(name) %></h2>
+          <span class="badge badge-outline badge-lg">
+            <%= h(versions.count == 1 ? versions.first.number : "#{versions.oldest.number} – #{versions.newest.number}") %>
+          </span>
+        </header>
 
-      <div class="card-footer">
-        <% newest_gem = versions.newest %>
-        <% if spec = spec_for(name, newest_gem.number, newest_gem.platform) %>
-          <p><%= h(spec.description) %></p>
-          <p class="author">– <%= spec.authors.map do |author|
-            "<a href='#{href(spec.homepage)}'>#{h(author)}</a>"
-          end.join(', ') %></p>
-        <% end %>
-      </div>
+        <div class="space-y-3">
+          <% versions.each.reverse_each do |version| %>
+            <%= erb :_version_row, layout: false, locals: { version: version } %>
+          <% end %>
+        </div>
 
-    </li>
+        <div class="rounded-box border border-dashed border-base-300 bg-base-100/70 p-4 text-sm leading-relaxed">
+          <% newest_gem = versions.newest %>
+          <% if spec = spec_for(name, newest_gem.number, newest_gem.platform) %>
+            <p><%= h(spec.description) %></p>
+            <p class="mt-2 text-base-content/70">
+              — <%= spec.authors.map do |author|
+                "<a class='link link-secondary' href='#{href(spec.homepage)}'>#{h(author)}</a>"
+              end.join(', ') %>
+            </p>
+          <% else %>
+            <p class="text-base-content/60">No description available.</p>
+          <% end %>
+        </div>
+      </div>
+    </section>
   <% end %>
-</ul>
+</div>

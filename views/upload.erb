@@ -1,6 +1,23 @@
-<p class="hint">Choose a gem file to upload ...</p>
-<%= @error %>
-<form method="POST" enctype="multipart/form-data" class="upload-form">
-  <input type="file" name="file">
-  <input type="submit" value="Upload">
-</form>
+<section class="space-y-6">
+  <div class="text-base-content/80 text-sm">
+    <p>Choose a gem file to upload. Overwriting an existing version depends on your server settings.</p>
+  </div>
+
+  <% if @error %>
+    <div class="alert alert-error shadow-sm">
+      <span><%= @error %></span>
+    </div>
+  <% end %>
+
+  <form class="card bg-base-200 shadow-lg" method="POST" enctype="multipart/form-data">
+    <div class="card-body space-y-4">
+      <label class="form-control w-full">
+        <span class="label-text font-semibold">Gem file</span>
+        <input class="file-input file-input-bordered w-full" type="file" name="file" required>
+      </label>
+      <div class="card-actions justify-end">
+        <button class="btn btn-primary" type="submit">Upload</button>
+      </div>
+    </div>
+  </form>
+</section>

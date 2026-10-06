@@ -1,0 +1,51 @@
+<section class="space-y-6">
+  <header class="space-y-2">
+    <h2 class="text-3xl font-bold">Gem in a Box Guide</h2>
+    <p class="text-base-content/70">Everything you need to configure the CLI, publish gems, and automate workflows.</p>
+  </header>
+
+  <article class="grid gap-6 md:grid-cols-2">
+    <div class="card bg-base-200 shadow-lg">
+      <div class="card-body space-y-4">
+        <h3 class="card-title text-xl">Add this gem server</h3>
+        <div class="rounded-box bg-base-100 p-4 font-mono text-sm">
+          <p># Without credentials</p>
+          <pre><code>gem sources -a <%= url "/" %></code></pre>
+          <p class="mt-3"># With credentials</p>
+          <pre><code>gem sources -a <%= url.to_s.gsub('://','://username:password@') %></code></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card bg-base-200 shadow-lg">
+      <div class="card-body space-y-4">
+        <h3 class="card-title text-xl">Upload from the CLI</h3>
+        <div class="rounded-box bg-base-100 p-4 font-mono text-sm">
+          <pre><code>gem install geminabox
+gem build your_gem.gemspec
+gem inabox pkg/your_gem-0.1.0.gem</code></pre>
+        </div>
+        <p class="text-sm text-base-content/70">Use <code>gem inabox --host <%= url "/" %></code> to target this server explicitly.</p>
+      </div>
+    </div>
+
+    <div class="card bg-base-200 shadow-lg md:col-span-2">
+      <div class="card-body space-y-4">
+        <h3 class="card-title text-xl">Tips</h3>
+        <ul class="list-disc space-y-2 pl-5 text-sm text-base-content/70">
+          <li>Restrict uploads via the web UI or CLI to authenticated users only.</li>
+          <li>Use environment variables <code>ADMIN_USER</code> and <code>ADMIN_PASS</code> for accessing the UI.</li>
+          <li>Automations can keep using basic auth against `/upload` and `/api/v1/gems` endpoints.</li>
+          <li>Back up the `<%= Geminabox.data %>` directory to retain all gems and indexes.</li>
+        </ul>
+      </div>
+    </div>
+  </article>
+
+  <footer class="flex flex-wrap items-center justify-between gap-4">
+    <a class="btn btn-ghost" href="<%= url("/") %>">← Back to index</a>
+    <% if @allow_upload %>
+      <a class="btn btn-primary" href="<%= url("/upload") %>">Upload a gem</a>
+    <% end %>
+  </footer>
+</section>

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html data-theme="light">
+  <head>
+    <title>Sign in - Gem in a Box</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
+    <script>
+      window.tailwind = window.tailwind || {};
+      window.tailwind.config = { theme: { extend: {} } };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  </head>
+  <body class="min-h-screen bg-gradient-to-br from-primary via-secondary to-accent flex items-center justify-center p-6" data-page-theme-login>
+    <main class="w-full max-w-md">
+      <%= yield %>
+    </main>
+    <footer class="absolute bottom-4 left-0 right-0 text-center text-xs text-white/80">
+      © <%= Time.now.year %> Gem in a Box
+    </footer>
+    <script>
+      (function() {
+        const STORAGE_KEY = "geminabox-theme";
+        const root = document.documentElement;
+        const body = document.querySelector("body[data-page-theme-login]");
+
+        const storedTheme = localStorage.getItem(STORAGE_KEY);
+        const theme = storedTheme || "light";
+        root.setAttribute("data-theme", theme);
+        if (body) {
+          body.dataset.pageThemeLogin = theme;
+        }
+      })();
+    </script>
+  </body>
+</html>
