@@ -9,6 +9,11 @@
   <div class="card bg-base-200 shadow-lg">
     <div class="card-body space-y-4">
       <h3 class="card-title text-xl">Add IP or CIDR</h3>
+      <% if @ip_error %>
+        <div class="alert alert-error text-sm">
+          <span><%= h(@ip_error) %></span>
+        </div>
+      <% end %>
       <form class="flex flex-col gap-3 sm:flex-row" method="post" action="<%= url("/admin/ips") %>">
         <label class="form-control w-full sm:w-auto flex-1">
           <span class="label-text font-semibold">IP address or range</span>
@@ -22,7 +27,7 @@
         <div class="alert alert-info text-sm">
           <div>
             <span class="font-semibold">Environment whitelist:</span>
-            <span class="font-mono"><%= @env_ip_whitelist.join(", ") %></span>
+            <span class="font-mono"><%= h(@env_ip_whitelist.join(", ")) %></span>
           </div>
           <div class="text-xs text-base-content/60">
             These entries come from <code>GEMINABOX_IP_WHITELIST</code> and cannot be edited here.
@@ -51,10 +56,10 @@
             <tbody>
               <% @ip_whitelist.each do |entry| %>
                 <tr>
-                  <td class="font-mono text-sm"><%= entry %></td>
+                  <td class="font-mono text-sm"><%= h(entry) %></td>
                   <td class="text-right">
-                    <form method="post" action="<%= url("/admin/ips/delete") %>" onsubmit="return confirm('Remove <%= entry %>?');">
-                      <input type="hidden" name="entry" value="<%= entry %>" />
+                    <form class="remove-ip-form" method="post" action="<%= url("/admin/ips/delete") %>" data-entry="<%= h(entry) %>">
+                      <input type="hidden" name="entry" value="<%= h(entry) %>" />
                       <button class="btn btn-sm btn-error" type="submit">Delete</button>
                     </form>
                   </td>
@@ -75,7 +80,7 @@
     <a class="btn btn-ghost" href="<%= url("/") %>">← Back to index</a>
     <div class="space-y-1">
       <p>
-        Persistent entries are stored at <code><%= File.join(Geminabox.data, 'config', 'ip_whitelist.yml') %></code>.
+        Persistent entries are stored at <code><%= h(File.join(Geminabox.data, 'config', 'ip_whitelist.yml')) %></code>.
       </p>
       <p>
         To manage via environment, set <code>GEMINABOX_IP_WHITELIST</code> with comma-separated IPs or CIDR ranges.

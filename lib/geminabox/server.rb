@@ -141,6 +141,15 @@ module Geminabox
       redirect url("/login")
     end
 
+    # The whitelist grants login bypass, so only a logged-in user can view or
+    # change it. A whitelisted IP alone is not enough.
+    before '/admin/*' do
+      next if logged_in?
+
+      session[:return_to] = request.fullpath if request.get?
+      redirect url("/login")
+    end
+
     get '/login' do
       if logged_in?
         redirect url("/")
@@ -219,13 +228,16 @@ module Geminabox
       content_type :html
       @ip_whitelist = normalize_ip_entries(persistent_ip_whitelist)
       @env_ip_whitelist = normalize_ip_entries(env_ip_whitelist)
+      @ip_error = session.delete(:admin_ip_error)
       @allow_upload = allow_upload?
       erb :admin_ips
     end
 
     post '/admin/ips' do
       entry = params[:entry].to_s.strip
-      unless entry.empty?
+      if !entry.empty? && !valid_ip_entry?(entry)
+        session[:admin_ip_error] = "Not an IP address or CIDR range: #{entry}. Enter a value such as 192.168.1.5 or 10.0.0.0/8."
+      elsif !entry.empty?
         entries = persistent_ip_whitelist
         entries << entry
         entries = normalize_ip_entries(entries)
@@ -376,6 +388,13 @@ module Geminabox
       rescue IPAddr::InvalidAddressError
         false
       end
+    end
+
+    def valid_ip_entry?(entry)
+      IPAddr.new(entry)
+      true
+    rescue IPAddr::Error
+      false
     end
 
     def ip_authorized_for_privileged_actions?(ip)

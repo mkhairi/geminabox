@@ -131,4 +131,19 @@
       );
     }
   );
+
+  [].forEach.call(
+    document.querySelectorAll("form.remove-ip-form"),
+    function (form) {
+      form.addEventListener(
+        "submit",
+        function (ev) {
+          if (!confirm("Remove " + form.getAttribute("data-entry") + "?")) {
+            ev.preventDefault();
+          }
+        },
+        false
+      );
+    }
+  );
 })();
