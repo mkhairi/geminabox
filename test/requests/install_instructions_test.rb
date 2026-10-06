@@ -3,7 +3,7 @@ require 'minitest'
 require 'rack/test'
 require 'nokogiri'
 
-# The UI steers clients to a Bundler scoped source, matching the README,
+# The guide steers clients to a Bundler scoped source, matching the README,
 # rather than adding this server as a global RubyGems source.
 class InstallInstructionsTest < Minitest::Test
   include Rack::Test::Methods
@@ -29,18 +29,20 @@ class InstallInstructionsTest < Minitest::Test
     doc.css(".version-row code").map { |code| code.text.strip }
   end
 
-  test "the index never recommends adding a global gem source" do
-    get "/"
-    refute_match(/gem sources -a/, last_response.body)
+  test "no page recommends adding a global gem source" do
+    ["/", "/guide"].each do |path|
+      get path
+      refute_match(/gem sources -a/, last_response.body, "on #{path}")
+    end
   end
 
-  test "the index shows a scoped source block for this server" do
-    get "/"
+  test "the guide shows a scoped source block for this server" do
+    get "/guide"
     assert_includes doc.css(".intro").text, 'source "http://example.org/" do'
   end
 
-  test "the index keeps credentials out of the source URL" do
-    get "/"
+  test "the guide keeps credentials out of the source URL" do
+    get "/guide"
     assert_includes doc.css(".intro").text,
                     "bundle config set --global example.org username:password"
   end
@@ -56,7 +58,7 @@ class InstallInstructionsTest < Minitest::Test
   end
 
   test "the source block follows a sub-URI mount" do
-    get "/", {}, "SCRIPT_NAME" => "/gems"
+    get "/guide", {}, "SCRIPT_NAME" => "/gems"
     assert_includes doc.css(".intro").text, 'source "http://example.org/gems/" do'
   end
 end

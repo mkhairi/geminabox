@@ -5,19 +5,17 @@
   </header>
 
   <article class="grid gap-6 md:grid-cols-2">
-    <div class="card bg-base-200 shadow-lg">
-      <div class="card-body space-y-4">
+    <div class="intro card bg-base-200 shadow-lg">
+      <div class="card-body space-y-3 text-sm">
         <h3 class="card-title text-xl">Add this gem server</h3>
-        <div class="rounded-box bg-base-100 p-4 font-mono text-sm">
-          <p># Gemfile: scope gems to this server</p>
-          <pre><code>source "<%= h(url("/")) %>" do
+        <p class="hint text-base-content/70">Add this server to your Gemfile, then paste gem lines from the index into the block</p>
+        <pre class="command snippet rounded-box bg-base-100 p-4 font-mono"><code>source "<%= h(url("/")) %>" do
   gem "..."
 end</code></pre>
-          <p class="mt-3"># With credentials</p>
-          <pre><code>bundle config set --global <%= h(URI(url("/")).host) %> username:password</code></pre>
-          <p class="mt-3"># Without Bundler</p>
-          <pre><code>gem install GEMNAME --source <%= h(url("/")) %></code></pre>
-        </div>
+        <p class="hint text-base-content/70">If you needed credentials to get to this page</p>
+        <pre class="command rounded-box bg-base-100 p-4 font-mono"><code>bundle config set --global <%= h(URI(url("/")).host) %> username:password</code></pre>
+        <p class="hint text-base-content/70">Without Bundler</p>
+        <pre class="command rounded-box bg-base-100 p-4 font-mono"><code>gem install GEMNAME --source <%= h(url("/")) %></code></pre>
       </div>
     </div>
 
