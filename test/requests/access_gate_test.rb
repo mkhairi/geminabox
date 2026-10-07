@@ -110,6 +110,22 @@ class AccessGateTest < Minitest::Test
     assert_equal 401, last_response.status
   end
 
+  test "whitelist entries broader than /8 (IPv4) or /32 (IPv6) never match" do
+    refute Geminabox::IpWhitelist.valid_entry?("0.0.0.0/0")
+    refute Geminabox::IpWhitelist.valid_entry?("1.2.3.4/0")
+    refute Geminabox::IpWhitelist.valid_entry?("::/16")
+    assert Geminabox::IpWhitelist.valid_entry?("10.0.0.0/8")
+
+    ENV["GEMINABOX_IP_WHITELIST"] = "0.0.0.0/0"
+    get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 401, last_response.status
+  end
+
+  test "the unknown-user bcrypt cost is capped" do
+    assert_equal Geminabox::Htpasswd::MAX_DUMMY_COST, Geminabox::Htpasswd.dummy_cost([31])
+    assert_equal BCrypt::Engine::DEFAULT_COST, Geminabox::Htpasswd.dummy_cost([])
+  end
+
   test "an unknown htpasswd user costs as much bcrypt work as a real one" do
     write_htpasswd(["alice:#{BCrypt::Password.create('pw', cost: 6)}"])
     assert_equal 6, Geminabox::Htpasswd.dummy_hash.cost

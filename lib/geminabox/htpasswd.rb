@@ -10,6 +10,9 @@ module Geminabox
   # Path: GEMINABOX_HTPASSWD, or <Geminabox.data>/config/htpasswd.
   module Htpasswd
     BCRYPT_PREFIX = /\A\$2[aby]\$/
+    # Upper bound for the unknown-user hash. One entry with a huge cost must
+    # not make every unknown-user request that slow.
+    MAX_DUMMY_COST = 12
 
     @mutex = Mutex.new
     @dummy_hashes = {}
@@ -28,12 +31,18 @@ module Geminabox
     end
 
     # Compared against when the user is unknown. It uses the highest cost in
-    # the file, so a miss takes as long as a wrong password.
+    # the file, capped at MAX_DUMMY_COST, so a miss takes as long as a wrong
+    # password. The hash is built outside the mutex so it blocks no one.
     def dummy_hash
-      cost = users.values.map(&:cost).max || BCrypt::Engine::DEFAULT_COST
-      @mutex.synchronize do
-        @dummy_hashes[cost] ||= BCrypt::Password.create("geminabox-dummy", cost: cost)
-      end
+      cost = dummy_cost(users.values.map(&:cost))
+      @mutex.synchronize { @dummy_hashes[cost] } ||
+        BCrypt::Password.create("geminabox-dummy", cost: cost).tap do |hash|
+          @mutex.synchronize { @dummy_hashes[cost] ||= hash }
+        end
+    end
+
+    def dummy_cost(costs)
+      [costs.max || BCrypt::Engine::DEFAULT_COST, MAX_DUMMY_COST].min
     end
 
     def users

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'ipaddr'
+require 'socket'
 require 'yaml'
 require 'fileutils'
 
@@ -11,14 +12,27 @@ module Geminabox
   module IpWhitelist
     module_function
 
+    # Ranges broader than these are treated as typos and never match, so
+    # an entry such as 1.2.3.4/0 cannot open the gate to everyone.
+    MIN_PREFIX = { Socket::AF_INET => 8, Socket::AF_INET6 => 32 }.freeze
+
     def matches?(list, ip)
       return false if ip.nil? || ip.empty?
 
       list.any? do |entry|
-        entry.include?("/") ? IPAddr.new(entry).include?(ip) : entry == ip
+        range = parse(entry)
+        range ? range.include?(ip) : false
       rescue IPAddr::Error
         false
       end
+    end
+
+    # The entry as an IPAddr, or nil when it is invalid or too broad.
+    def parse(entry)
+      range = IPAddr.new(entry)
+      range.prefix >= MIN_PREFIX.fetch(range.family) ? range : nil
+    rescue IPAddr::Error
+      nil
     end
 
     # The peer address. X-Forwarded-For counts only when the peer is listed
@@ -30,7 +44,7 @@ module Geminabox
       return remote unless matches?(proxies, remote)
 
       forwarded = env["HTTP_X_FORWARDED_FOR"].to_s.split(",").map(&:strip).reject(&:empty?)
-      forwarded.reverse.find { |ip| !matches?(proxies, ip) } || forwarded.first || remote
+      forwarded.reverse.find { |ip| !matches?(proxies, ip) } || remote
     end
 
     def include?(ip)
@@ -66,10 +80,7 @@ module Geminabox
     end
 
     def valid_entry?(entry)
-      IPAddr.new(entry)
-      true
-    rescue IPAddr::Error
-      false
+      !parse(entry).nil?
     end
 
     def normalize(entries)

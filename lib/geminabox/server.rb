@@ -223,7 +223,7 @@ module Geminabox
     post '/admin/ips' do
       entry = params[:entry].to_s.strip
       if !entry.empty? && !IpWhitelist.valid_entry?(entry)
-        session[:admin_ip_error] = "Not an IP address or CIDR range: #{entry}. Enter a value such as 192.168.1.5 or 10.0.0.0/8."
+        session[:admin_ip_error] = "Not an IP address or CIDR range, or broader than /8 (IPv4) or /32 (IPv6): #{entry}. Enter a value such as 192.168.1.5 or 10.0.0.0/8."
       elsif !entry.empty?
         IpWhitelist.save(IpWhitelist.persistent_entries << entry)
       end
