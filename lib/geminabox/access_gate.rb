@@ -66,8 +66,13 @@ module Geminabox
       auth = Rack::Auth::Basic::Request.new(env)
       return false unless auth.provided? && auth.basic?
       return true if Server.admin_credentials_match?(*auth.credentials)
+      return true if read_only_request?(request) && Htpasswd.authenticate?(*auth.credentials)
 
-      read_only_request?(request) && Htpasswd.authenticate?(*auth.credentials)
+      # The username is client input. inspect escapes control characters, so
+      # it cannot forge log lines. The password is never logged.
+      warn "[geminabox] Basic auth rejected: user=#{auth.username.to_s.inspect} " \
+           "ip=#{IpWhitelist.client_ip(env)} #{request.request_method} #{request.path_info.inspect[1..-2]}"
+      false
     end
 
     def read_only_request?(request)

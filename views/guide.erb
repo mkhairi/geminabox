@@ -36,7 +36,7 @@ gem inabox pkg/your_gem-0.1.0.gem</code></pre>
         <h3 class="card-title text-xl">Tips</h3>
         <ul class="list-disc space-y-2 pl-5 text-sm text-base-content/70">
           <li><code>ADMIN_USER</code> and <code>ADMIN_PASS</code> sign in to this UI and are the only credentials that can push, upload, or delete gems.</li>
-          <li>Install-only users live in an htpasswd file: <code>GEMINABOX_HTPASSWD</code>, or <code><%= h(File.join(Geminabox.data, 'config', 'htpasswd')) %></code>. Add one with <code>htpasswd -B &lt;file&gt; &lt;user&gt;</code>. Only bcrypt (<code>-B</code>) entries work. Changes apply without a restart.</li>
+          <li>Install-only users live in an htpasswd file: <code>GEMINABOX_HTPASSWD</code>, or <code><%= h(File.join(Geminabox.data, 'config', 'htpasswd')) %></code>. Add one with <code>htpasswd -B &lt;file&gt; &lt;user&gt;</code>. Only bcrypt (<code>-B</code>) entries work. Other lines are skipped with a warning in the server log. Changes apply without a restart.</li>
           <li>Install-only users can download gems and read the index. They cannot sign in to this UI.</li>
           <li>Automations push with Basic auth (<code>ADMIN_USER</code>/<code>ADMIN_PASS</code>) against <code>/upload</code> and <code>/api/v1/gems</code>.</li>
           <li>Back up the `<%= Geminabox.data %>` directory to retain all gems and indexes.</li>

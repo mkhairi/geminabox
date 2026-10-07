@@ -1,5 +1,6 @@
 require_relative '../test_helper'
 require 'minitest'
+require 'minitest/mock'
 require 'rack/test'
 require 'rack/session'
 require 'bcrypt'
@@ -119,6 +120,43 @@ class AccessGateTest < Minitest::Test
     ENV["GEMINABOX_IP_WHITELIST"] = "0.0.0.0/0"
     get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP
     assert_equal 401, last_response.status
+  end
+
+  test "a correct htpasswd login is cached and a wrong one is not" do
+    write_htpasswd([htpasswd_line("alice", "pw-alice")])
+    assert Geminabox::Htpasswd.authenticate?("alice", "pw-alice")
+    assert Geminabox::Htpasswd.cached?("alice", "pw-alice")
+
+    refute Geminabox::Htpasswd.authenticate?("alice", "wrong")
+    refute Geminabox::Htpasswd.cached?("alice", "wrong")
+  end
+
+  test "the login cache expires and clears when the file changes" do
+    write_htpasswd([htpasswd_line("alice", "pw-alice")])
+    assert Geminabox::Htpasswd.authenticate?("alice", "pw-alice")
+
+    later = Geminabox::Htpasswd.now + Geminabox::Htpasswd::CACHE_TTL + 1
+    Geminabox::Htpasswd.stub(:now, later) do
+      refute Geminabox::Htpasswd.cached?("alice", "pw-alice")
+    end
+
+    assert Geminabox::Htpasswd.authenticate?("alice", "pw-alice")
+    write_htpasswd([htpasswd_line("alice", "pw-alice")])
+    refute Geminabox::Htpasswd.cached?("alice", "pw-alice")
+  end
+
+  test "ignored htpasswd lines are logged with the reason" do
+    assert_output(nil, /line 2 ignored \(user "md5user"\): not a bcrypt hash.*htpasswd -B .* md5user\n.*line 3 ignored: expected user:hash/m) do
+      write_htpasswd(["# comment", "md5user:$apr1$abcdefgh$0123456789abcdefghijkl", "garbage"])
+      Geminabox::Htpasswd.users
+    end
+  end
+
+  test "a rejected Basic login is logged without the password" do
+    basic_authorize "mallory", "pw-secret"
+    _, err = capture_io { get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP }
+    assert_match(/Basic auth rejected: user="mallory" ip=#{Regexp.escape(OUTSIDE_IP)} GET \/gems\/foo-1\.2\.3\.gem/, err)
+    refute_includes err, "pw-secret"
   end
 
   test "the unknown-user bcrypt cost is capped" do
