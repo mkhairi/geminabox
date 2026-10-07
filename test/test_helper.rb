@@ -29,12 +29,13 @@ require_relative '../lib/geminabox'
 ENV["GEMINABOX_IP_WHITELIST"] ||= "127.0.0.1,::1"
 require 'minitest/autorun'
 
-# The login throttle counts per process. Clear it so one test's failed
-# logins never block the next test.
+# The login throttle and the untrusted-proxy warnings keep per-process
+# state. Clear both so one test never affects the next.
 Minitest::Test.prepend(Module.new do
   def before_setup
     super
     Geminabox::LoginThrottle.reset!
+    Geminabox::IpWhitelist.reset_warnings!
   end
 end)
 require 'fileutils'

@@ -47,7 +47,7 @@ module Geminabox
       return @app.call(env) if OPEN_PATHS.any? { |pattern| pattern.match?(path) }
 
       ip = IpWhitelist.client_ip(env)
-      return @app.call(env) if request.session[:logged_in] || IpWhitelist.include?(ip)
+      return @app.call(env) if request.session[:logged_in] || IpWhitelist.whitelisted?(env)
       if (seconds = LoginThrottle.retry_after(ip))
         return LoginThrottle.too_many_response(ip, seconds)
       end

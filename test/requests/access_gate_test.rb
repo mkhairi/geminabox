@@ -99,6 +99,33 @@ class AccessGateTest < Minitest::Test
     assert_equal 401, last_response.status
   end
 
+  test "a whitelisted proxy that is not trusted lets nobody skip login" do
+    # Production setup: the proxy's own address is in the whitelist, but
+    # GEMINABOX_TRUSTED_PROXIES is unset. Every client looks like the proxy.
+    ENV["GEMINABOX_IP_WHITELIST"] = "172.17.0.0/16"
+    _, err = capture_io do
+      2.times do
+        get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => "172.17.0.1", "HTTP_X_FORWARDED_FOR" => OUTSIDE_IP
+        assert_equal 401, last_response.status
+      end
+    end
+    assert_equal 1, err.scan(/IP whitelist ignored: request from 172\.17\.0\.1 carries a forwarding header.*GEMINABOX_TRUSTED_PROXIES=172\.17\.0\.1/).size
+
+    # A direct request from a whitelisted address still skips login.
+    get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => "172.17.0.1"
+    assert last_response.ok?
+  end
+
+  test "Forwarded and X-Real-IP headers also disable the whitelist from an untrusted peer" do
+    ENV["GEMINABOX_IP_WHITELIST"] = OUTSIDE_IP
+    capture_io do
+      get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP, "HTTP_FORWARDED" => "for=203.0.113.9"
+      assert_equal 401, last_response.status
+      get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP, "HTTP_X_REAL_IP" => "203.0.113.9"
+      assert_equal 401, last_response.status
+    end
+  end
+
   test "a trusted proxy's X-Forwarded-For gives the client IP" do
     ENV["GEMINABOX_IP_WHITELIST"] = OUTSIDE_IP
     ENV["GEMINABOX_TRUSTED_PROXIES"] = "172.17.0.0/16"

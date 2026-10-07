@@ -51,6 +51,44 @@ module Geminabox
       matches?(entries, ip)
     end
 
+    FORWARDING_HEADERS = %w[HTTP_X_FORWARDED_FOR HTTP_FORWARDED HTTP_X_REAL_IP].freeze
+    # Peers already warned about, so a misconfigured proxy logs once.
+    @warned_peers = {}
+    @warned_mutex = Mutex.new
+
+    # Whether the request may skip login by IP. A forwarding header from a
+    # peer not in GEMINABOX_TRUSTED_PROXIES means the real client is
+    # unknown. The whitelist is then ignored, so a proxy without that
+    # setting makes everyone log in instead of letting everyone in.
+    def whitelisted?(env)
+      remote = env["REMOTE_ADDR"].to_s.strip
+      if FORWARDING_HEADERS.any? { |h| !env[h].to_s.strip.empty? } &&
+         !matches?(list_from_env("GEMINABOX_TRUSTED_PROXIES"), remote)
+        warn_untrusted_proxy(remote)
+        return false
+      end
+
+      include?(client_ip(env))
+    end
+
+    def reset_warnings!
+      @warned_mutex.synchronize { @warned_peers.clear }
+    end
+
+    def warn_untrusted_proxy(remote)
+      first = @warned_mutex.synchronize do
+        next false if @warned_peers.key?(remote)
+
+        @warned_peers.clear if @warned_peers.size >= 1000
+        @warned_peers[remote] = true
+      end
+      return unless first
+
+      warn "[geminabox] IP whitelist ignored: request from #{remote} carries a forwarding header, " \
+           "but GEMINABOX_TRUSTED_PROXIES does not list #{remote}. If it is your proxy, " \
+           "set GEMINABOX_TRUSTED_PROXIES=#{remote}."
+    end
+
     def entries
       normalize(persistent_entries + env_entries)
     end
