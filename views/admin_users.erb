@@ -1,0 +1,99 @@
+<section class="space-y-6">
+  <header class="space-y-2">
+    <h2 class="text-3xl font-bold">Install Users</h2>
+    <p class="text-base-content/70">
+      Install-only users can download gems and read the index with HTTP Basic auth. They cannot sign in to this UI, push, or delete. Changes apply on the next request.
+    </p>
+  </header>
+
+  <% if @user_error %>
+    <div class="alert alert-error text-sm">
+      <span><%= h(@user_error) %></span>
+    </div>
+  <% end %>
+
+  <% if @created %>
+    <div class="alert alert-success text-sm">
+      <div class="space-y-2">
+        <p>User <span class="font-mono"><%= h(@created[:username]) %></span>: <%= h(@created[:action]) %>.</p>
+        <% if @created[:password] %>
+          <p>Password, shown once. Copy it now:</p>
+          <pre class="rounded-box bg-base-100 p-2 font-mono" data-new-password><%= h(@created[:password]) %></pre>
+          <p class="text-xs">Client setup:</p>
+          <pre class="rounded-box bg-base-100 p-2 font-mono text-xs">bundle config set --global <%= h(URI(url("/")).host) %> <%= h(@created[:username]) %>:<%= h(@created[:password]) %></pre>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <div class="card bg-base-200 shadow-lg">
+    <div class="card-body space-y-4">
+      <h3 class="card-title text-xl">Add user</h3>
+      <form class="flex flex-col gap-3 sm:flex-row" method="post" action="<%= url("/admin/users") %>">
+        <%= csrf_tag %>
+        <label class="form-control w-full sm:w-auto flex-1">
+          <span class="label-text font-semibold">Username</span>
+          <input class="input input-bordered w-full" type="text" name="username" pattern="[A-Za-z0-9._\-]{1,64}" placeholder="e.g. alice" required />
+        </label>
+        <label class="form-control w-full sm:w-auto flex-1">
+          <span class="label-text font-semibold">Password (optional)</span>
+          <input class="input input-bordered w-full" type="password" name="password" minlength="<%= Geminabox::Htpasswd::MIN_PASSWORD_LENGTH %>" autocomplete="new-password" placeholder="Leave empty to generate" />
+        </label>
+        <div class="flex items-end">
+          <button class="btn btn-primary" type="submit">Add</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card bg-base-200 shadow-lg">
+    <div class="card-body space-y-4">
+      <h3 class="card-title text-xl">Users</h3>
+      <% if @users.any? %>
+        <div class="overflow-x-auto">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @users.each do |name| %>
+                <tr>
+                  <td class="font-mono text-sm"><%= h(name) %></td>
+                  <td class="text-right">
+                    <div class="flex justify-end gap-2">
+                      <form method="post" action="<%= url("/admin/users/reset") %>">
+                        <%= csrf_tag %>
+                        <input type="hidden" name="username" value="<%= h(name) %>" />
+                        <button class="btn btn-sm btn-outline" type="submit">Reset password</button>
+                      </form>
+                      <form class="remove-user-form" method="post" action="<%= url("/admin/users/delete") %>" data-entry="<%= h(name) %>">
+                        <%= csrf_tag %>
+                        <input type="hidden" name="username" value="<%= h(name) %>" />
+                        <button class="btn btn-sm btn-error" type="submit">Remove</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% else %>
+        <div class="alert alert-info">
+          <span>No install users yet.</span>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <footer class="flex flex-wrap items-center justify-between gap-4 text-sm text-base-content/70">
+    <a class="btn btn-ghost" href="<%= url("/") %>">← Back to index</a>
+    <div class="space-y-1">
+      <p>Users are stored at <code><%= h(@htpasswd_path) %></code>, as bcrypt hashes.</p>
+      <p>You can also edit the file with <code>htpasswd -B</code>. Only bcrypt entries work.</p>
+    </div>
+  </footer>
+</section>

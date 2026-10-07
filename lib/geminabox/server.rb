@@ -3,6 +3,7 @@
 require 'reentrant_flock'
 require 'rubygems/util'
 require 'rss'
+require 'securerandom'
 
 module Geminabox
 
@@ -22,6 +23,44 @@ module Geminabox
 
       def current_user
         session[:username]
+      end
+
+      def render_admin_users(code = 200, error: nil, created: nil)
+        status code
+        # The page can show a new password. Never let a cache keep it.
+        headers "cache-control" => "no-store"
+        content_type :html
+        @users = Htpasswd.usernames
+        @htpasswd_path = Htpasswd.file
+        @user_error = error
+        @created = created
+        @allow_upload = allow_upload?
+        erb :admin_users
+      end
+
+      # Saves a new password for the user. A blank password field generates
+      # one, which the page shows once and never stores anywhere else.
+      def save_htpasswd_user(username, action)
+        password = params[:password].to_s
+        generated = password.empty?
+        password = SecureRandom.alphanumeric(24) if generated
+        if password.length < Htpasswd::MIN_PASSWORD_LENGTH
+          return render_admin_users(422, error: "Password must be at least #{Htpasswd::MIN_PASSWORD_LENGTH} characters, or leave it empty to generate one.")
+        end
+
+        Htpasswd.set_password(username, password)
+        warn "[geminabox] htpasswd user #{action}: #{username.inspect} by #{current_user.to_s.inspect}"
+        render_admin_users(created: { username: username, action: action, password: (password if generated) })
+      rescue SystemCallError => e
+        render_admin_users(500, error: htpasswd_write_error(e))
+      end
+
+      def htpasswd_write_error(error)
+        "Cannot write #{Htpasswd.file}: #{error.message}. The file and its directory must be writable by the app user (uid 1000)."
+      end
+
+      def invalid_username_message(username)
+        "Invalid username #{username.inspect}. Use 1-64 letters, digits, dots, dashes, or underscores."
       end
 
       def client_ip
@@ -260,6 +299,42 @@ module Geminabox
         IpWhitelist.save(entries) if entries.delete(entry)
       end
       redirect url('/admin/ips')
+    end
+
+    get '/admin/users' do
+      render_admin_users
+    end
+
+    post '/admin/users' do
+      username = params[:username].to_s.strip
+      if !Htpasswd.valid_username?(username)
+        render_admin_users(422, error: invalid_username_message(username))
+      elsif Htpasswd.usernames.include?(username)
+        render_admin_users(422, error: "User #{username} already exists. Use Reset to change the password.")
+      else
+        save_htpasswd_user(username, "added")
+      end
+    end
+
+    post '/admin/users/reset' do
+      username = params[:username].to_s.strip
+      if Htpasswd.usernames.include?(username)
+        save_htpasswd_user(username, "password reset")
+      else
+        render_admin_users(422, error: "No user named #{username}.")
+      end
+    end
+
+    post '/admin/users/delete' do
+      username = params[:username].to_s.strip
+      begin
+        if Htpasswd.remove(username)
+          warn "[geminabox] htpasswd user removed: #{username.inspect} by #{current_user.to_s.inspect}"
+        end
+      rescue SystemCallError => e
+        halt render_admin_users(500, error: htpasswd_write_error(e))
+      end
+      redirect url('/admin/users')
     end
 
     get '/api/v1/dependencies' do

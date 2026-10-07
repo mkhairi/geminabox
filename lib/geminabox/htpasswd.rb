@@ -3,6 +3,7 @@
 require 'bcrypt'
 require 'openssl'
 require 'securerandom'
+require 'fileutils'
 
 module Geminabox
   # Read-only users from an htpasswd file, created with `htpasswd -B`.
@@ -130,6 +131,61 @@ module Geminabox
         warn "[geminabox] #{path} line #{number} ignored (user #{name.inspect}): invalid bcrypt hash. " \
              "Recreate it with: htpasswd -B #{path} #{name}"
       end
+    end
+
+    USERNAME = /\A[A-Za-z0-9._-]{1,64}\z/
+    MIN_PASSWORD_LENGTH = 12
+
+    def valid_username?(name)
+      USERNAME.match?(name.to_s)
+    end
+
+    def usernames
+      users.keys.sort
+    end
+
+    # Adds the user, or replaces its hash. Other lines, including comments
+    # and skipped entries, stay as they are.
+    def set_password(username, password)
+      raise ArgumentError, "invalid username" unless valid_username?(username)
+
+      hash = BCrypt::Password.create(password.to_s)
+      edit_lines do |lines|
+        index = lines.index { |line| line.split(":", 2).first == username }
+        entry = "#{username}:#{hash}"
+        index ? lines[index] = entry : lines << entry
+      end
+    end
+
+    # Returns whether a line for the user existed.
+    def remove(username)
+      removed = false
+      edit_lines do |lines|
+        removed = !lines.reject! { |line| line.split(":", 2).first == username }.nil?
+      end
+      removed
+    end
+
+    # Holds an exclusive lock on <file>.lock across read, edit, and write,
+    # so two admins cannot lose each other's change.
+    def edit_lines
+      path = file
+      FileUtils.mkdir_p(File.dirname(path))
+      File.open("#{path}.lock", File::RDWR | File::CREAT, 0o600) do |lock|
+        lock.flock(File::LOCK_EX)
+        lines = File.exist?(path) ? File.readlines(path, chomp: true) : []
+        yield lines
+        write_lines(path, lines)
+      end
+    end
+
+    # Writes a temp file and renames it, so readers never see half a file.
+    def write_lines(path, lines)
+      temp = "#{path}.#{Process.pid}.tmp"
+      File.write(temp, lines.empty? ? "" : "#{lines.join("\n")}\n", perm: 0o600)
+      File.rename(temp, path)
+    ensure
+      FileUtils.rm_f(temp) if temp && File.exist?(temp)
     end
 
     def file

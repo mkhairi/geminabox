@@ -40,6 +40,7 @@
           <% if defined?(logged_in?) && logged_in? %>
             <a class="btn btn-ghost btn-sm" href="<%= url("/guide") %>">Guide</a>
             <a class="btn btn-ghost btn-sm" href="<%= url("/admin/ips") %>">IP Access</a>
+            <a class="btn btn-ghost btn-sm" href="<%= url("/admin/users") %>">Users</a>
             <% if (defined?(allow_upload?) && allow_upload?) || @allow_upload %>
               <a class="btn btn-primary btn-sm" href="<%= url("/upload") %>">Upload</a>
             <% end %>
