@@ -69,8 +69,8 @@
             <% if defined?(logged_in?) && logged_in? %>
               <span class="text-xs uppercase tracking-[0.3em] text-base-content/60">Signed in as <%= h(current_user) %></span>
             <% end %>
-            <% if request && request.ip %>
-              <span class="text-xs text-base-content/60">Your IP: <%= h(request.ip) %></span>
+            <% if request && (ip = client_ip) && !ip.empty? %>
+              <span class="text-xs text-base-content/60">Your IP: <%= h(ip) %></span>
             <% end %>
           </div>
           <div class="flex items-center gap-4">

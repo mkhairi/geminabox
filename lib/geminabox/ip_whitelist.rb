@@ -11,14 +11,30 @@ module Geminabox
   module IpWhitelist
     module_function
 
-    def include?(ip)
+    def matches?(list, ip)
       return false if ip.nil? || ip.empty?
 
-      entries.any? do |entry|
+      list.any? do |entry|
         entry.include?("/") ? IPAddr.new(entry).include?(ip) : entry == ip
       rescue IPAddr::Error
         false
       end
+    end
+
+    # The peer address. X-Forwarded-For counts only when the peer is listed
+    # in GEMINABOX_TRUSTED_PROXIES. Rack's request.ip trusts any private
+    # peer. Behind Docker's port mapping, any client can spoof it.
+    def client_ip(env)
+      remote = env["REMOTE_ADDR"].to_s.strip
+      proxies = list_from_env("GEMINABOX_TRUSTED_PROXIES")
+      return remote unless matches?(proxies, remote)
+
+      forwarded = env["HTTP_X_FORWARDED_FOR"].to_s.split(",").map(&:strip).reject(&:empty?)
+      forwarded.reverse.find { |ip| !matches?(proxies, ip) } || forwarded.first || remote
+    end
+
+    def include?(ip)
+      matches?(entries, ip)
     end
 
     def entries
@@ -26,7 +42,11 @@ module Geminabox
     end
 
     def env_entries
-      value = ENV.fetch("GEMINABOX_IP_WHITELIST", nil)
+      list_from_env("GEMINABOX_IP_WHITELIST")
+    end
+
+    def list_from_env(name)
+      value = ENV.fetch(name, nil)
       return [] if value.nil? || value.strip.empty?
 
       normalize(value.split(/\s*,\s*/))

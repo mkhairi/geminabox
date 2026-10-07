@@ -11,6 +11,7 @@ class AccessGateTest < Minitest::Test
   include Rack::Test::Methods
 
   OUTSIDE_IP = "198.51.100.20".freeze
+  GATE_ENV = %w[ADMIN_USER ADMIN_PASS GEMINABOX_IP_WHITELIST GEMINABOX_TRUSTED_PROXIES].freeze
 
   def setup
     clean_data_dir
@@ -18,14 +19,15 @@ class AccessGateTest < Minitest::Test
     # removes its directory, so recreate it.
     Geminabox::Server.dependency_cache.flush
     inject_gems { |builder| builder.gem "foo", version: "1.2.3" }
-    @env_backup = ENV.to_h.slice("ADMIN_USER", "ADMIN_PASS", "GEMINABOX_IP_WHITELIST")
+    @env_backup = ENV.to_h.slice(*GATE_ENV)
     ENV["ADMIN_USER"] = "admin"
     ENV["ADMIN_PASS"] = "secret"
     ENV.delete("GEMINABOX_IP_WHITELIST")
+    ENV.delete("GEMINABOX_TRUSTED_PROXIES")
   end
 
   def teardown
-    %w[ADMIN_USER ADMIN_PASS GEMINABOX_IP_WHITELIST].each { |key| ENV.delete(key) }
+    GATE_ENV.each { |key| ENV.delete(key) }
     @env_backup.each { |key, value| ENV[key] = value }
   end
 
@@ -88,6 +90,29 @@ class AccessGateTest < Minitest::Test
     ENV["GEMINABOX_IP_WHITELIST"] = OUTSIDE_IP
     get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP
     assert last_response.ok?
+  end
+
+  test "X-Forwarded-For is ignored unless the peer is a trusted proxy" do
+    ENV["GEMINABOX_IP_WHITELIST"] = OUTSIDE_IP
+    get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => "172.17.0.1", "HTTP_X_FORWARDED_FOR" => OUTSIDE_IP
+    assert_equal 401, last_response.status
+  end
+
+  test "a trusted proxy's X-Forwarded-For gives the client IP" do
+    ENV["GEMINABOX_IP_WHITELIST"] = OUTSIDE_IP
+    ENV["GEMINABOX_TRUSTED_PROXIES"] = "172.17.0.0/16"
+    get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => "172.17.0.1", "HTTP_X_FORWARDED_FOR" => OUTSIDE_IP
+    assert last_response.ok?
+
+    # The proxy appends the real peer. A spoofed entry to its left is ignored.
+    get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => "172.17.0.1",
+                                   "HTTP_X_FORWARDED_FOR" => "#{OUTSIDE_IP}, 203.0.113.9"
+    assert_equal 401, last_response.status
+  end
+
+  test "an unknown htpasswd user costs as much bcrypt work as a real one" do
+    write_htpasswd(["alice:#{BCrypt::Password.create('pw', cost: 6)}"])
+    assert_equal 6, Geminabox::Htpasswd.dummy_hash.cost
   end
 
   test "a logged-in session downloads and returns to the page it asked for" do

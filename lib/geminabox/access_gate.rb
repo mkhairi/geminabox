@@ -58,7 +58,7 @@ module Geminabox
 
     def allowed?(request, env)
       request.session[:logged_in] ||
-        IpWhitelist.include?(request.ip) ||
+        IpWhitelist.include?(IpWhitelist.client_ip(request.env)) ||
         basic_auth_valid?(request, env)
     end
 

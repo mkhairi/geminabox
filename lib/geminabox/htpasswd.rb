@@ -10,11 +10,9 @@ module Geminabox
   # Path: GEMINABOX_HTPASSWD, or <Geminabox.data>/config/htpasswd.
   module Htpasswd
     BCRYPT_PREFIX = /\A\$2[aby]\$/
-    # Compared against when the user is unknown, so a miss costs about the
-    # same time as a wrong password.
-    DUMMY_HASH = BCrypt::Password.create("geminabox-dummy", cost: BCrypt::Engine::MIN_COST)
 
     @mutex = Mutex.new
+    @dummy_hashes = {}
     @cache = { path: nil, mtime: nil, users: {} }
 
     module_function
@@ -22,11 +20,20 @@ module Geminabox
     def authenticate?(username, password)
       hash = users[username.to_s]
       if hash.nil?
-        DUMMY_HASH.is_password?(password.to_s)
+        dummy_hash.is_password?(password.to_s)
         return false
       end
 
       hash.is_password?(password.to_s)
+    end
+
+    # Compared against when the user is unknown. It uses the highest cost in
+    # the file, so a miss takes as long as a wrong password.
+    def dummy_hash
+      cost = users.values.map(&:cost).max || BCrypt::Engine::DEFAULT_COST
+      @mutex.synchronize do
+        @dummy_hashes[cost] ||= BCrypt::Password.create("geminabox-dummy", cost: cost)
+      end
     end
 
     def users

@@ -24,8 +24,12 @@ module Geminabox
         session[:username]
       end
 
+      def client_ip
+        IpWhitelist.client_ip(request.env)
+      end
+
       def allow_upload?
-        self.class.allow_upload? && IpWhitelist.include?(request&.ip)
+        self.class.allow_upload? && request && IpWhitelist.include?(client_ip)
       end
 
       def csrf_tag
@@ -169,7 +173,7 @@ module Geminabox
       @gems = load_gems
       @index_gems = index_gems(@gems)
       @allow_upload = allow_upload?
-      @allow_delete = self.class.allow_delete? && IpWhitelist.include?(request.ip)
+      @allow_delete = self.class.allow_delete? && IpWhitelist.include?(client_ip)
       erb :index
     end
 
@@ -269,7 +273,7 @@ module Geminabox
     get '/gems/:gemname' do
       gems = Hash[load_gems.by_name]
       @gem = gems[params[:gemname]]
-      @allow_delete = self.class.allow_delete? && IpWhitelist.include?(request.ip)
+      @allow_delete = self.class.allow_delete? && IpWhitelist.include?(client_ip)
       halt 404 unless @gem
       content_type :html
       erb :gem

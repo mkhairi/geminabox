@@ -87,6 +87,9 @@
       <p>
         To manage via environment, set <code>GEMINABOX_IP_WHITELIST</code> with comma-separated IPs or CIDR ranges.
       </p>
+      <p>
+        Behind a reverse proxy, set <code>GEMINABOX_TRUSTED_PROXIES</code> to the proxy's IPs or CIDR ranges. Without it, <code>X-Forwarded-For</code> is ignored and the whitelist matches the proxy's address.
+      </p>
     </div>
   </footer>
 </section>
