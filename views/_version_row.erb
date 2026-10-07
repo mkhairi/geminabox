@@ -11,6 +11,7 @@
       <a class="download btn btn-sm btn-outline btn-primary" href="<%= h(url("/gems/#{version.gemfile_name}.gem")) %>">Download</a>
       <% if @allow_delete %>
         <form class="delete-form" method="post" action="<%= h(url("/gems/#{version.gemfile_name}.gem")) %>" data-gem-name="<%= h(version.name) %>" data-version="<%= h(version.number) %>" data-platform="<%= h(version.platform) %>">
+          <%= csrf_tag %>
           <input type="hidden" name="_method" value="DELETE" />
           <button class="btn btn-sm btn-error" type="submit">Delete</button>
         </form>

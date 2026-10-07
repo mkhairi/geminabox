@@ -24,6 +24,8 @@ module Geminabox
   end
 
   autoload :Hostess,                geminabox_path('hostess')
+  autoload :AccessGate,             geminabox_path('access_gate')
+  autoload :IpWhitelist,            geminabox_path('ip_whitelist')
   autoload :GemStore,               geminabox_path('gem_store')
   autoload :GemStoreError,          geminabox_path('gem_store_error')
   autoload :GemVersion,             geminabox_path('gem_version')

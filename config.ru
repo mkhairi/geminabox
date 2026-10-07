@@ -37,12 +37,18 @@ class GeminaboxProtectedRoutes
 
   def authorized?(env)
     auth = Rack::Auth::Basic::Request.new(env)
-    if auth.provided? && auth.basic? && auth.credentials == [@username, @password]
+    if auth.provided? && auth.basic? && credentials_match?(*auth.credentials)
       env["REMOTE_USER"] = @username
       true
     else
       false
     end
+  end
+
+  def credentials_match?(username, password)
+    user_ok = Rack::Utils.secure_compare(username.to_s, @username)
+    pass_ok = Rack::Utils.secure_compare(password.to_s, @password)
+    user_ok && pass_ok
   end
 
   def unauthorized_response
@@ -54,21 +60,33 @@ class GeminaboxProtectedRoutes
   end
 end
 
-Geminabox.rubygems_proxy = false
-Geminabox.data = "/data"
+Geminabox.data = ENV.fetch("GEMINABOX_DATA", "/data")
 
 username = ENV["ADMIN_USER"]
 password = ENV["ADMIN_PASS"]
+session_secret = ENV["SESSION_SECRET"].to_s
 
 if username.to_s.empty? || password.to_s.empty?
   raise "ADMIN_USER and ADMIN_PASS must be set for protected routes."
 end
 
-Geminabox::Server.set :ui_username, username
-Geminabox::Server.set :ui_password, password
+if session_secret.length < 64
+  raise "SESSION_SECRET must be set to at least 64 characters. Generate one with: openssl rand -hex 64"
+end
 
 use GeminaboxProtectedRoutes, username: username, password: password
-use Rack::Session::Pool, expire_after: 1000 # sec
+use Rack::Session::Cookie,
+    key: "geminabox.session",
+    secret: session_secret,
+    same_site: :lax,
+    httponly: true,
+    expire_after: 1000 # sec
 use Rack::Protection
+# Browser forms carry a session token. CLI clients (gem push, gem inabox,
+# bundler) send an Authorization header and no session, so they skip it.
+# Rack::Protection's Origin check above still covers cross-site browser
+# requests that carry cached Basic credentials.
+use Rack::Protection::AuthenticityToken,
+    allow_if: ->(env) { env.key?("HTTP_AUTHORIZATION") }
 
 run Geminabox::Server

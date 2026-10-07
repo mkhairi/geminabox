@@ -23,6 +23,10 @@ gem "bundler"
 require "bundler/setup"
 
 require_relative '../lib/geminabox'
+
+# Every request needs a login, a whitelisted IP, or Basic auth. Tests run
+# from localhost, so whitelist it. Access tests override this per test.
+ENV["GEMINABOX_IP_WHITELIST"] ||= "127.0.0.1,::1"
 require 'minitest/autorun'
 require 'fileutils'
 require_relative 'test_support/gem_factory'

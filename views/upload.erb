@@ -10,6 +10,7 @@
   <% end %>
 
   <form class="card bg-base-200 shadow-lg" method="POST" enctype="multipart/form-data">
+    <%= csrf_tag %>
     <div class="card-body space-y-4">
       <label class="form-control w-full">
         <span class="label-text font-semibold">Gem file</span>

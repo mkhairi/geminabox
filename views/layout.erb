@@ -44,6 +44,7 @@
               <a class="btn btn-primary btn-sm" href="<%= url("/upload") %>">Upload</a>
             <% end %>
             <form method="post" action="<%= url("/logout") %>">
+              <%= csrf_tag %>
               <button class="btn btn-outline btn-sm" type="submit">Log out</button>
             </form>
           <% else %>

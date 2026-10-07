@@ -15,6 +15,7 @@
         </div>
       <% end %>
       <form class="flex flex-col gap-3 sm:flex-row" method="post" action="<%= url("/admin/ips") %>">
+        <%= csrf_tag %>
         <label class="form-control w-full sm:w-auto flex-1">
           <span class="label-text font-semibold">IP address or range</span>
           <input class="input input-bordered w-full" type="text" name="entry" placeholder="e.g. 192.168.1.5 or 10.0.0.0/8" required />
@@ -59,6 +60,7 @@
                   <td class="font-mono text-sm"><%= h(entry) %></td>
                   <td class="text-right">
                     <form class="remove-ip-form" method="post" action="<%= url("/admin/ips/delete") %>" data-entry="<%= h(entry) %>">
+                      <%= csrf_tag %>
                       <input type="hidden" name="entry" value="<%= h(entry) %>" />
                       <button class="btn btn-sm btn-error" type="submit">Delete</button>
                     </form>

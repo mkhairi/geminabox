@@ -3,32 +3,16 @@
 require 'reentrant_flock'
 require 'rubygems/util'
 require 'rss'
-require 'ipaddr'
-require 'yaml'
-require 'fileutils'
 
 module Geminabox
 
   class Server < Sinatra::Base
-    LOGIN_EXEMPT_PATHS = [
-      %r{\A/login},
-      %r{\A/logout},
-      %r{\A/atom\.xml\z},
-      %r{\A/api/},
-      %r{\A/gems/.*\.gem\z},
-      %r{\A/versions\z},
-      %r{\A/names\z},
-      %r{\A/info},
-      %r{\A/master\.js\z},
-      %r{\A/favicon\.ico\z},
-      %r{\A/robots\.txt\z}
-    ].freeze
-
     enable :static, :methodoverride
     set :public_folder, Geminabox.public_folder
     set :views, Geminabox.views
     set :host_authorization, { permitted_hosts: [] }
 
+    use AccessGate
     use Hostess
 
     helpers do
@@ -41,15 +25,12 @@ module Geminabox
       end
 
       def allow_upload?
-        self.class.allow_upload? && ip_authorized_for_privileged_actions?(request&.ip)
+        self.class.allow_upload? && IpWhitelist.include?(request&.ip)
       end
 
-      def ui_username
-        settings.respond_to?(:ui_username) ? settings.ui_username : ENV["ADMIN_USER"]
-      end
-
-      def ui_password
-        settings.respond_to?(:ui_password) ? settings.ui_password : ENV["ADMIN_PASS"]
+      def csrf_tag
+        token = Rack::Protection::AuthenticityToken.token(session)
+        %(<input type="hidden" name="authenticity_token" value="#{h(token)}" />)
       end
     end
 
@@ -64,6 +45,18 @@ module Geminabox
 
       def allow_upload?
         Geminabox.allow_upload
+      end
+
+      # Checks a login against ADMIN_USER and ADMIN_PASS, or the ui_username
+      # and ui_password settings when set. Constant-time per field.
+      def admin_credentials_match?(username, password)
+        expected_user = respond_to?(:ui_username) ? ui_username : ENV["ADMIN_USER"]
+        expected_pass = respond_to?(:ui_password) ? ui_password : ENV["ADMIN_PASS"]
+        return false if expected_user.to_s.empty? || expected_pass.to_s.empty?
+
+        user_ok = Rack::Utils.secure_compare(username.to_s, expected_user.to_s)
+        pass_ok = Rack::Utils.secure_compare(password.to_s, expected_pass.to_s)
+        user_ok && pass_ok
       end
 
       def fixup_bundler_rubygems!
@@ -131,16 +124,6 @@ module Geminabox
       headers 'X-Powered-By' => "geminabox #{Geminabox::VERSION}"
     end
 
-    before do
-      next unless request.get?
-      next if login_exempt_path?(request.path_info)
-      next if logged_in?
-      next if ip_whitelisted?(request.ip)
-
-      session[:return_to] = request.fullpath
-      redirect url("/login")
-    end
-
     # The whitelist grants login bypass, so only a logged-in user can view or
     # change it. A whitelisted IP alone is not enough.
     before '/admin/*' do
@@ -160,11 +143,11 @@ module Geminabox
     end
 
     post '/login' do
-      if params[:username].to_s == ui_username && params[:password].to_s == ui_password
+      if self.class.admin_credentials_match?(params[:username], params[:password])
+        target = session.delete(:return_to)
         session[:logged_in] = true
         session[:username] = params[:username]
-        target = session.delete(:return_to)
-        if target && !login_exempt_path?(target)
+        if target&.start_with?("/") && !target.start_with?("//") && !target.match?(%r{/log(in|out)\b})
           redirect target
         else
           redirect url("/")
@@ -186,7 +169,7 @@ module Geminabox
       @gems = load_gems
       @index_gems = index_gems(@gems)
       @allow_upload = allow_upload?
-      @allow_delete = self.class.allow_delete? && ip_authorized_for_privileged_actions?(request.ip)
+      @allow_delete = self.class.allow_delete? && IpWhitelist.include?(request.ip)
       erb :index
     end
 
@@ -226,8 +209,8 @@ module Geminabox
 
     get '/admin/ips' do
       content_type :html
-      @ip_whitelist = normalize_ip_entries(persistent_ip_whitelist)
-      @env_ip_whitelist = normalize_ip_entries(env_ip_whitelist)
+      @ip_whitelist = IpWhitelist.persistent_entries
+      @env_ip_whitelist = IpWhitelist.env_entries
       @ip_error = session.delete(:admin_ip_error)
       @allow_upload = allow_upload?
       erb :admin_ips
@@ -235,13 +218,10 @@ module Geminabox
 
     post '/admin/ips' do
       entry = params[:entry].to_s.strip
-      if !entry.empty? && !valid_ip_entry?(entry)
+      if !entry.empty? && !IpWhitelist.valid_entry?(entry)
         session[:admin_ip_error] = "Not an IP address or CIDR range: #{entry}. Enter a value such as 192.168.1.5 or 10.0.0.0/8."
       elsif !entry.empty?
-        entries = persistent_ip_whitelist
-        entries << entry
-        entries = normalize_ip_entries(entries)
-        save_persistent_ip_whitelist(entries)
+        IpWhitelist.save(IpWhitelist.persistent_entries << entry)
       end
       redirect url('/admin/ips')
     end
@@ -249,10 +229,8 @@ module Geminabox
     post '/admin/ips/delete' do
       entry = params[:entry].to_s.strip
       unless entry.empty?
-        entries = persistent_ip_whitelist
-        if entries.delete(entry)
-          save_persistent_ip_whitelist(normalize_ip_entries(entries))
-        end
+        entries = IpWhitelist.persistent_entries
+        IpWhitelist.save(entries) if entries.delete(entry)
       end
       redirect url('/admin/ips')
     end
@@ -291,7 +269,7 @@ module Geminabox
     get '/gems/:gemname' do
       gems = Hash[load_gems.by_name]
       @gem = gems[params[:gemname]]
-      @allow_delete = self.class.allow_delete? && ip_authorized_for_privileged_actions?(request.ip)
+      @allow_delete = self.class.allow_delete? && IpWhitelist.include?(request.ip)
       halt 404 unless @gem
       content_type :html
       erb :gem
@@ -372,70 +350,6 @@ module Geminabox
     end
 
   private
-
-    def login_exempt_path?(path)
-      path_only = path.to_s.split("?", 2).first
-      LOGIN_EXEMPT_PATHS.any? { |pattern| pattern.match?(path_only) }
-    end
-
-    def ip_whitelisted?(ip)
-      whitelist_entries.any? do |entry|
-        if entry.include?("/")
-          IPAddr.new(entry).include?(ip)
-        else
-          entry == ip
-        end
-      rescue IPAddr::InvalidAddressError
-        false
-      end
-    end
-
-    def valid_ip_entry?(entry)
-      IPAddr.new(entry)
-      true
-    rescue IPAddr::Error
-      false
-    end
-
-    def ip_authorized_for_privileged_actions?(ip)
-      return false unless ip
-      ip_whitelisted?(ip)
-    end
-
-    def whitelist_entries
-      @whitelist_entries ||= begin
-        entries = persistent_ip_whitelist + env_ip_whitelist
-        normalize_ip_entries(entries)
-      end
-    end
-
-    def env_ip_whitelist
-      env_value = ENV.fetch("GEMINABOX_IP_WHITELIST", nil)
-      return [] if env_value.nil? || env_value.strip.empty?
-      env_value.split(/\s*,\s*/)
-    end
-
-    def persistent_ip_whitelist
-      return [] unless File.exist?(ip_whitelist_file)
-      data = YAML.load_file(ip_whitelist_file)
-      normalize_ip_entries(Array(data).map(&:to_s))
-    rescue Psych::SyntaxError
-      []
-    end
-
-    def save_persistent_ip_whitelist(entries)
-      FileUtils.mkdir_p(File.dirname(ip_whitelist_file))
-      File.write(ip_whitelist_file, entries.to_yaml)
-      @whitelist_entries = nil
-    end
-
-    def normalize_ip_entries(entries)
-      entries.map { |e| e.to_s.strip }.reject(&:empty?).uniq.sort
-    end
-
-    def ip_whitelist_file
-      File.join(Geminabox.data, 'config', 'ip_whitelist.yml')
-    end
 
     def serialize_update(&block)
       with_rlock(&block)

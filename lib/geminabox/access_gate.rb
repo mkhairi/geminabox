@@ -1,0 +1,72 @@
+# frozen_string_literal: true
+
+require 'rack/auth/basic'
+
+module Geminabox
+  # Lets a request through only with a logged-in session, a whitelisted IP,
+  # or valid HTTP Basic credentials. Server mounts it in front of Hostess, so
+  # gem files and spec indexes are gated too. Basic credentials are
+  # ADMIN_USER/ADMIN_PASS.
+  class AccessGate
+    OPEN_PATHS = [
+      %r{\A/login\z},
+      %r{\A/logout\z},
+      %r{\A/master\.js\z},
+      %r{\A/favicon\.ico\z},
+      %r{\A/robots\.txt\z}
+    ].freeze
+
+    # Paths that gem clients fetch. These get a 401 Basic challenge, never a
+    # redirect to the HTML login page.
+    CLIENT_PATHS = [
+      %r{\A/gems/.+\.gem\z},
+      %r{\A/api/},
+      %r{\A/versions\z},
+      %r{\A/names\z},
+      %r{\A/info/},
+      %r{\A/(latest_|prerelease_)?specs\.4\.8(\.gz)?\z},
+      %r{\A/quick/},
+      %r{\A/atom\.xml\z},
+      %r{\A/reindex\z}
+    ].freeze
+
+    def initialize(app)
+      @app = app
+    end
+
+    def call(env)
+      request = Rack::Request.new(env)
+      path = request.path_info
+      return @app.call(env) if OPEN_PATHS.any? { |pattern| pattern.match?(path) }
+      return @app.call(env) if allowed?(request, env)
+
+      if CLIENT_PATHS.any? { |pattern| pattern.match?(path) }
+        challenge
+      else
+        request.session[:return_to] = request.fullpath if request.get?
+        [302, { "location" => "#{request.base_url}#{request.script_name}/login" }, []]
+      end
+    end
+
+    private
+
+    def allowed?(request, env)
+      request.session[:logged_in] ||
+        IpWhitelist.include?(request.ip) ||
+        basic_auth_valid?(env)
+    end
+
+    def basic_auth_valid?(env)
+      auth = Rack::Auth::Basic::Request.new(env)
+      auth.provided? && auth.basic? && Server.admin_credentials_match?(*auth.credentials)
+    end
+
+    def challenge
+      [
+        401,
+        { "content-type" => "text/plain", "www-authenticate" => 'Basic realm="Gem in a Box"' },
+        ["Authentication required: log in, connect from a whitelisted IP, or send HTTP Basic credentials.\n"]
+      ]
+    end
+  end
+end
