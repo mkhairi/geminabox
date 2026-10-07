@@ -3,6 +3,7 @@
 .env
 .env.*
 .bundle
+AGENTS.md
 data
 coverage
 tmp

@@ -21,3 +21,6 @@ test/fixtures/fake_home_path/.cache/
 .envrc
 .env
 .env.*
+
+# Local agent guide. Never commit it.
+AGENTS.md
