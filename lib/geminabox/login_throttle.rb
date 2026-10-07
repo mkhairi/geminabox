@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'ipaddr'
+
 module Geminabox
   # Blocks a client IP after repeated failed logins. The gate's Basic auth,
   # the /login form, and config.ru's push routes share one count per IP.
@@ -12,13 +14,17 @@ module Geminabox
   # login, which anyone with install access has, can reset failed admin
   # guesses and remove the limit. Failures expire when the window ends.
   #
+  # IPv6 clients count per /64 network, because one host can use any
+  # address in its /64.
+  #
   # Counts live in this process only. Each worker process counts on its
   # own, and a restart clears every block.
   module LoginThrottle
     DEFAULT_MAX_FAILURES = 10
     DEFAULT_BLOCK_SECONDS = 300
-    # Past this many IPs, expired entries are pruned. If every entry is
-    # still live, all counts reset, so memory stays bounded.
+    # Past this many entries, expired ones go first, then the oldest
+    # unblocked ones. Blocked entries go last, so a flood of new IPs cannot
+    # lift an existing block.
     MAX_TRACKED = 10_000
 
     @mutex = Mutex.new
@@ -28,13 +34,14 @@ module Geminabox
 
     # Seconds until the IP may try again, or nil when it is not blocked.
     def retry_after(ip)
+      key = key_for(ip)
       @mutex.synchronize do
-        entry = @entries[ip.to_s]
+        entry = @entries[key]
         next nil unless entry&.dig(:blocked_until)
 
         remaining = entry[:blocked_until] - now
         if remaining <= 0
-          @entries.delete(ip.to_s)
+          @entries.delete(key)
           next nil
         end
         remaining.ceil
@@ -42,10 +49,14 @@ module Geminabox
     end
 
     def record_failure(ip)
+      key = key_for(ip)
       @mutex.synchronize do
-        prune if @entries.size >= MAX_TRACKED
-        entry = @entries[ip.to_s]
-        entry = @entries[ip.to_s] = { count: 0, first_at: now } if entry.nil? || expired?(entry)
+        entry = @entries[key]
+        if entry.nil? || expired?(entry)
+          @entries.delete(key)
+          make_room
+          entry = @entries[key] = { count: 0, first_at: now }
+        end
         entry[:count] += 1
         next if entry[:blocked_until] || entry[:count] < max_failures
 
@@ -56,6 +67,23 @@ module Geminabox
 
     def reset!
       @mutex.synchronize { @entries.clear }
+    end
+
+    def size
+      @mutex.synchronize { @entries.size }
+    end
+
+    def max_tracked
+      MAX_TRACKED
+    end
+
+    # The count key: the IP itself, or its /64 network for IPv6.
+    def key_for(ip)
+      addr = IPAddr.new(ip.to_s)
+      addr = addr.native
+      addr.ipv6? ? "#{addr.mask(64)}/64" : addr.to_s
+    rescue IPAddr::Error
+      ip.to_s
     end
 
     def max_failures
@@ -87,9 +115,18 @@ module Geminabox
       end
     end
 
-    def prune
+    # Called with the mutex held, before a new entry is added.
+    def make_room
+      return if @entries.size < max_tracked
+
       @entries.delete_if { |_, entry| expired?(entry) }
-      @entries.clear if @entries.size >= MAX_TRACKED
+      return if @entries.size < max_tracked
+
+      # Free a tenth at once, so a flood of new IPs sorts rarely.
+      excess = [@entries.size - max_tracked + 1, max_tracked / 10].max
+
+      victims = @entries.sort_by { |_, e| [e[:blocked_until] ? 1 : 0, e[:blocked_until] || e[:first_at]] }
+      victims.first(excess).each { |key, _| @entries.delete(key) }
     end
 
     def positive_env(name, default)

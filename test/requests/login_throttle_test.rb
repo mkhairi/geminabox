@@ -119,6 +119,21 @@ class LoginThrottleTest < Minitest::Test
     assert_equal 1, err.scan(/ip=#{Regexp.escape(ATTACKER_IP)} blocked for 60s after 3 failed logins/).size
   end
 
+  test "IPv6 addresses in one /64 share a count" do
+    3.times { |i| Geminabox::LoginThrottle.record_failure("2001:db8:1:2::#{i + 1}") }
+    assert Geminabox::LoginThrottle.retry_after("2001:db8:1:2::ffff")
+    refute Geminabox::LoginThrottle.retry_after("2001:db8:1:3::1")
+  end
+
+  test "filling the tracker with other IPs keeps existing blocks" do
+    3.times { Geminabox::LoginThrottle.record_failure(ATTACKER_IP) }
+    Geminabox::LoginThrottle.stub(:max_tracked, 5) do
+      20.times { |i| Geminabox::LoginThrottle.record_failure("203.0.113.#{i + 1}") }
+      assert Geminabox::LoginThrottle.retry_after(ATTACKER_IP)
+      assert_operator Geminabox::LoginThrottle.size, :<=, 5
+    end
+  end
+
   test "an invalid limit falls back to the default" do
     ENV["GEMINABOX_AUTH_MAX_FAILURES"] = "lots"
     assert_equal Geminabox::LoginThrottle::DEFAULT_MAX_FAILURES, Geminabox::LoginThrottle.max_failures
