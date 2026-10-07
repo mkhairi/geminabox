@@ -7,8 +7,8 @@ require 'securerandom'
 module Geminabox
   # Read-only users from an htpasswd file, created with `htpasswd -B`.
   # Only bcrypt entries ($2y$, $2a$, $2b$) are accepted. Other lines are
-  # skipped with a warning on stderr. The file is re-read when its mtime
-  # changes.
+  # skipped with a warning on stderr. The file is re-read when its mtime,
+  # size, or inode changes.
   #
   # A correct login is cached for CACHE_TTL seconds, so a bundle install
   # does not run one bcrypt check per request. The cache holds only an HMAC
@@ -27,8 +27,9 @@ module Geminabox
 
     @mutex = Mutex.new
     @dummy_hashes = {}
-    @cache = { path: nil, mtime: nil, users: {} }
+    @cache = { path: nil, version: nil, users: {} }
     @verified = {}
+    @generation = 0
     @cache_key = SecureRandom.bytes(32)
 
     module_function
@@ -36,6 +37,7 @@ module Geminabox
     def authenticate?(username, password)
       return true if cached?(username, password)
 
+      generation = self.generation
       hash = users[username.to_s]
       if hash.nil?
         dummy_hash.is_password?(password.to_s)
@@ -43,7 +45,7 @@ module Geminabox
       end
       return false unless hash.is_password?(password.to_s)
 
-      remember(username, password)
+      remember(username, password, generation)
       true
     end
 
@@ -53,8 +55,19 @@ module Geminabox
       !expires_at.nil? && expires_at > now
     end
 
-    def remember(username, password)
+    # Counts file reloads. users runs first, so the count matches the file
+    # it returns.
+    def generation
+      users
+      @mutex.synchronize { @generation }
+    end
+
+    # Caches a login only if the file did not reload during its bcrypt
+    # check. Otherwise a user removed mid-check stays cached.
+    def remember(username, password, generation)
       @mutex.synchronize do
+        next unless generation == @generation
+
         @verified.clear if @verified.size >= CACHE_MAX
         @verified[cache_digest(username, password)] = now + CACHE_TTL
       end
@@ -85,11 +98,15 @@ module Geminabox
 
     def users
       path = file
-      mtime = File.exist?(path) ? File.mtime(path) : nil
+      # Size and inode catch a rewrite within one mtime tick, and an
+      # editor that replaces the file.
+      stat = File.exist?(path) ? File.stat(path) : nil
+      version = stat && [stat.mtime, stat.size, stat.ino]
       @mutex.synchronize do
-        unless @cache[:path] == path && @cache[:mtime] == mtime
-          @cache = { path: path, mtime: mtime, users: mtime ? parse(File.read(path), path) : {} }
+        unless @cache[:path] == path && @cache[:version] == version
+          @cache = { path: path, version: version, users: version ? parse(File.read(path), path) : {} }
           @verified.clear
+          @generation += 1
         end
         @cache[:users]
       end

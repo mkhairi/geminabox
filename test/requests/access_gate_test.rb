@@ -145,6 +145,19 @@ class AccessGateTest < Minitest::Test
     refute Geminabox::Htpasswd.cached?("alice", "pw-alice")
   end
 
+  test "a login checked against a since-reloaded file is not cached" do
+    write_htpasswd([htpasswd_line("alice", "pw-alice")])
+    Geminabox::Htpasswd.users
+    generation = Geminabox::Htpasswd.generation
+
+    # alice is removed while her bcrypt check is still running.
+    write_htpasswd([])
+    Geminabox::Htpasswd.users
+    Geminabox::Htpasswd.remember("alice", "pw-alice", generation)
+
+    refute Geminabox::Htpasswd.cached?("alice", "pw-alice")
+  end
+
   test "ignored htpasswd lines are logged with the reason" do
     assert_output(nil, /line 2 ignored \(user "md5user"\): not a bcrypt hash.*htpasswd -B .* md5user\n.*line 3 ignored: expected user:hash/m) do
       write_htpasswd(["# comment", "md5user:$apr1$abcdefgh$0123456789abcdefghijkl", "garbage"])
