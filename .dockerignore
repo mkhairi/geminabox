@@ -1,0 +1,21 @@
+# Secrets and local state must never reach the image.
+.envrc
+.env
+.env.*
+data
+coverage
+tmp
+log
+*.gem
+
+# Not needed at runtime.
+.git
+.github
+.remember
+.ruby-lsp
+.rubocop.yml
+.rubocop_todo.yml
+docs
+test
+console.sh
+bin

@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# Build the geminabox Docker image and push it to depot.labs.my.
+#
+# Tags: <version>-<git sha> and latest. Version comes from
+# lib/geminabox/version.rb.
+#
+# Env:
+#   IMAGE     image name (default: depot.labs.my/geminabox)
+#   PLATFORM  target platform (default: linux/amd64)
+#
+# Run `docker login depot.labs.my` once before the first push.
+set -euo pipefail
+
+usage() {
+  cat <<EOF
+Usage: bin/build [--no-push] [--allow-dirty]
+
+  --no-push      Build and tag locally. Do not push.
+  --allow-dirty  Build with uncommitted changes. The tag gets a -dirty suffix.
+  -h, --help     Show this help.
+
+Env: IMAGE (default depot.labs.my/geminabox), PLATFORM (default linux/amd64).
+EOF
+}
+
+push=1
+allow_dirty=0
+for arg in "$@"; do
+  case "$arg" in
+    --no-push) push=0 ;;
+    --allow-dirty) allow_dirty=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "bin/build: unknown option: $arg" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+cd "$(dirname "$0")/.."
+
+image="${IMAGE:-depot.labs.my/geminabox}"
+platform="${PLATFORM:-linux/amd64}"
+
+# Gemfile.lock is git-ignored, but the Dockerfile installs it frozen.
+if [[ ! -f Gemfile.lock ]]; then
+  echo "bin/build: Gemfile.lock is missing. Run: bundle install" >&2
+  exit 1
+fi
+
+# The image is built from the working tree, so a dirty tree gives an image
+# that matches no commit.
+suffix=""
+if ! git diff --quiet HEAD --; then
+  if [[ $allow_dirty -eq 0 ]]; then
+    echo "bin/build: uncommitted changes in tracked files. Commit them, or rerun with --allow-dirty." >&2
+    git status --short --untracked-files=no >&2
+    exit 1
+  fi
+  suffix="-dirty"
+fi
+
+version="$(ruby -e 'require "./lib/geminabox/version"; print Geminabox::VERSION')"
+sha="$(git rev-parse --short HEAD)"
+tag="${version}-${sha}${suffix}"
+
+echo "Building ${image}:${tag} for ${platform}"
+docker build \
+  --platform "$platform" \
+  --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
+  --label "org.opencontainers.image.version=${version}" \
+  -t "${image}:${tag}" \
+  -t "${image}:latest" \
+  .
+
+if [[ $push -eq 0 ]]; then
+  echo "Built ${image}:${tag} and ${image}:latest. Not pushed (--no-push)."
+  exit 0
+fi
+
+for t in "$tag" latest; do
+  if ! docker push "${image}:${t}"; then
+    echo "bin/build: push of ${image}:${t} failed. If unauthorized, run: docker login ${image%%/*}" >&2
+    exit 1
+  fi
+done
+echo "Pushed ${image}:${tag} and ${image}:latest."
