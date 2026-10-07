@@ -2,6 +2,7 @@ require_relative '../test_helper'
 require 'minitest'
 require 'rack/test'
 require 'rack/session'
+require 'bcrypt'
 
 # Gem files, spec indexes and the index APIs need a login session, a
 # whitelisted IP, or HTTP Basic credentials. Hostess serves some of these,
@@ -98,6 +99,87 @@ class AccessGateTest < Minitest::Test
 
     get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP
     assert last_response.ok?
+  end
+
+  def write_htpasswd(lines)
+    path = File.join(Geminabox.data, "config", "htpasswd")
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, lines.join("\n") + "\n")
+    # Bump mtime so the reload check sees a change within the same second.
+    File.utime(Time.now, Time.now + rand(1..1000), path)
+  end
+
+  # htpasswd -B writes $2y$. The bcrypt gem writes $2a$ for the same hash.
+  def htpasswd_line(user, password)
+    "#{user}:#{BCrypt::Password.create(password, cost: BCrypt::Engine::MIN_COST).sub(/\A\$2a\$/, '$2y$')}"
+  end
+
+  test "an htpasswd user reaches every read-only client path" do
+    write_htpasswd([htpasswd_line("alice", "pw-alice")])
+    basic_authorize "alice", "pw-alice"
+    CLIENT_PATHS.each do |path|
+      get path, {}, "REMOTE_ADDR" => OUTSIDE_IP
+      assert last_response.ok?, "on #{path}: #{last_response.status}"
+    end
+  end
+
+  test "an htpasswd user cannot push, yank, delete, or reindex" do
+    write_htpasswd([htpasswd_line("alice", "pw-alice")])
+    basic_authorize "alice", "pw-alice"
+
+    post "/api/v1/gems", "x", "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 401, last_response.status, "push"
+    delete "/api/v1/gems/yank", { gem_name: "foo", version: "1.2.3" }, "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 401, last_response.status, "yank"
+    delete "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 401, last_response.status, "delete"
+    get "/reindex", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 401, last_response.status, "reindex"
+    assert File.exist?(File.join(Geminabox.data, "gems", "foo-1.2.3.gem"))
+  end
+
+  test "an htpasswd user cannot sign in to the web UI" do
+    write_htpasswd([htpasswd_line("alice", "pw-alice")])
+    post "/login", { username: "alice", password: "pw-alice" }, "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 401, last_response.status
+  end
+
+  test "a wrong htpasswd password is rejected" do
+    write_htpasswd([htpasswd_line("alice", "pw-alice")])
+    basic_authorize "alice", "wrong"
+    get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 401, last_response.status
+  end
+
+  test "non-bcrypt htpasswd entries are ignored" do
+    write_htpasswd([
+      "# comment",
+      "md5user:$apr1$abcdefgh$0123456789abcdefghijkl",
+      "plain:plaintext",
+      htpasswd_line("bob", "pw-bob")
+    ])
+    basic_authorize "plain", "plaintext"
+    get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 401, last_response.status
+
+    basic_authorize "bob", "pw-bob"
+    get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert last_response.ok?
+  end
+
+  test "htpasswd changes apply without a restart" do
+    write_htpasswd([htpasswd_line("alice", "pw-alice")])
+    basic_authorize "carol", "pw-carol"
+    get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 401, last_response.status
+
+    write_htpasswd([htpasswd_line("carol", "pw-carol")])
+    get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert last_response.ok?
+
+    write_htpasswd([])
+    get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 401, last_response.status
   end
 
   test "a wrong password does not log in" do

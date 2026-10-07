@@ -5,8 +5,10 @@ require 'rack/auth/basic'
 module Geminabox
   # Lets a request through only with a logged-in session, a whitelisted IP,
   # or valid HTTP Basic credentials. Server mounts it in front of Hostess, so
-  # gem files and spec indexes are gated too. Basic credentials are
-  # ADMIN_USER/ADMIN_PASS.
+  # gem files and spec indexes are gated too.
+  #
+  # Basic credentials are either ADMIN_USER/ADMIN_PASS (full access) or an
+  # htpasswd user (read-only: GET and HEAD on READ_ONLY_PATHS).
   class AccessGate
     OPEN_PATHS = [
       %r{\A/login\z},
@@ -29,6 +31,10 @@ module Geminabox
       %r{\A/atom\.xml\z},
       %r{\A/reindex\z}
     ].freeze
+
+    # Client paths an htpasswd user can fetch. /reindex is left out because
+    # it rewrites the index.
+    READ_ONLY_PATHS = (CLIENT_PATHS - [%r{\A/reindex\z}]).freeze
 
     def initialize(app)
       @app = app
@@ -53,12 +59,20 @@ module Geminabox
     def allowed?(request, env)
       request.session[:logged_in] ||
         IpWhitelist.include?(request.ip) ||
-        basic_auth_valid?(env)
+        basic_auth_valid?(request, env)
     end
 
-    def basic_auth_valid?(env)
+    def basic_auth_valid?(request, env)
       auth = Rack::Auth::Basic::Request.new(env)
-      auth.provided? && auth.basic? && Server.admin_credentials_match?(*auth.credentials)
+      return false unless auth.provided? && auth.basic?
+      return true if Server.admin_credentials_match?(*auth.credentials)
+
+      read_only_request?(request) && Htpasswd.authenticate?(*auth.credentials)
+    end
+
+    def read_only_request?(request)
+      (request.get? || request.head?) &&
+        READ_ONLY_PATHS.any? { |pattern| pattern.match?(request.path_info) }
     end
 
     def challenge

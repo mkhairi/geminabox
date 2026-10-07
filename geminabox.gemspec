@@ -31,4 +31,5 @@ Gem::Specification.new do |s|
   s.add_dependency('compact_index', '~> 0.15')
   s.add_dependency('rubygems-generate_index', '~> 1.1')
   s.add_dependency('rss', '~> 0.3')
+  s.add_dependency('bcrypt', '~> 3.1')
 end

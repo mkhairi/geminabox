@@ -12,7 +12,7 @@
         <pre class="command snippet rounded-box bg-base-100 p-4 font-mono"><code>source "<%= h(url("/")) %>" do
   gem "..."
 end</code></pre>
-        <p class="hint text-base-content/70">If you needed credentials to get to this page</p>
+        <p class="hint text-base-content/70">Credentials: your install-only htpasswd user. Ask an admin for one.</p>
         <pre class="command rounded-box bg-base-100 p-4 font-mono"><code>bundle config set --global <%= h(URI(url("/")).host) %> username:password</code></pre>
         <p class="hint text-base-content/70">Without Bundler</p>
         <pre class="command rounded-box bg-base-100 p-4 font-mono"><code>gem install GEMNAME --source <%= h(url("/")) %></code></pre>
@@ -35,9 +35,10 @@ gem inabox pkg/your_gem-0.1.0.gem</code></pre>
       <div class="card-body space-y-4">
         <h3 class="card-title text-xl">Tips</h3>
         <ul class="list-disc space-y-2 pl-5 text-sm text-base-content/70">
-          <li>Restrict uploads via the web UI or CLI to authenticated users only.</li>
-          <li>Use environment variables <code>ADMIN_USER</code> and <code>ADMIN_PASS</code> for accessing the UI.</li>
-          <li>Automations can keep using basic auth against `/upload` and `/api/v1/gems` endpoints.</li>
+          <li><code>ADMIN_USER</code> and <code>ADMIN_PASS</code> sign in to this UI and are the only credentials that can push, upload, or delete gems.</li>
+          <li>Install-only users live in an htpasswd file: <code>GEMINABOX_HTPASSWD</code>, or <code><%= h(File.join(Geminabox.data, 'config', 'htpasswd')) %></code>. Add one with <code>htpasswd -B &lt;file&gt; &lt;user&gt;</code>. Only bcrypt (<code>-B</code>) entries work. Changes apply without a restart.</li>
+          <li>Install-only users can download gems and read the index. They cannot sign in to this UI.</li>
+          <li>Automations push with Basic auth (<code>ADMIN_USER</code>/<code>ADMIN_PASS</code>) against <code>/upload</code> and <code>/api/v1/gems</code>.</li>
           <li>Back up the `<%= Geminabox.data %>` directory to retain all gems and indexes.</li>
         </ul>
       </div>
