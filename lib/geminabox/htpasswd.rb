@@ -113,12 +113,21 @@ module Geminabox
       end
     end
 
+    # The username a line defines, or nil for blank and comment lines.
+    # parse and the editor both use it, so they always agree on a name.
+    def entry_name(line)
+      line = line.strip
+      return nil if line.empty? || line.start_with?("#")
+
+      line.split(":", 2).first
+    end
+
     def parse(content, path = file)
       content.each_line.with_index(1).with_object({}) do |(line, number), users|
-        line = line.strip
-        next if line.empty? || line.start_with?("#")
+        name = entry_name(line)
+        next if name.nil?
 
-        name, hash = line.split(":", 2)
+        hash = line.strip.split(":", 2)[1]
         if name.to_s.empty? || hash.nil?
           warn "[geminabox] #{path} line #{number} ignored: expected user:hash."
         elsif !hash.match?(BCRYPT_PREFIX)
@@ -151,9 +160,11 @@ module Geminabox
 
       hash = BCrypt::Password.create(password.to_s)
       edit_lines do |lines|
-        index = lines.index { |line| line.split(":", 2).first == username }
-        entry = "#{username}:#{hash}"
-        index ? lines[index] = entry : lines << entry
+        # Replace every line for the user with one. The parser keeps the
+        # last duplicate, so leaving one behind keeps an old password alive.
+        index = lines.index { |line| entry_name(line) == username }
+        lines.reject! { |line| entry_name(line) == username }
+        lines.insert(index || lines.size, "#{username}:#{hash}")
       end
     end
 
@@ -161,7 +172,7 @@ module Geminabox
     def remove(username)
       removed = false
       edit_lines do |lines|
-        removed = !lines.reject! { |line| line.split(":", 2).first == username }.nil?
+        removed = !lines.reject! { |line| entry_name(line) == username }.nil?
       end
       removed
     end

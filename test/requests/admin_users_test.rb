@@ -147,6 +147,23 @@ class AdminUsersTest < Minitest::Test
     assert Geminabox::Htpasswd.authenticate?("bob", "pw-bob-123456")
   end
 
+  test "reset and remove act on every line for the user, however it is written" do
+    FileUtils.mkdir_p(File.dirname(htpasswd_file))
+    old = BCrypt::Password.create("old-password-1", cost: BCrypt::Engine::MIN_COST)
+    File.write(htpasswd_file, "alice:#{old}\n  alice:#{old}  \r\nbob:#{old}\n")
+    log_in
+
+    capture_io { post "/admin/users/reset", { username: "alice", password: "new-password-12" }, "REMOTE_ADDR" => CLIENT_IP }
+    refute Geminabox::Htpasswd.authenticate?("alice", "old-password-1")
+    assert Geminabox::Htpasswd.authenticate?("alice", "new-password-12")
+    assert_equal 1, htpasswd_lines.count { |l| l.strip.start_with?("alice:") }
+
+    File.write(htpasswd_file, "alice:#{old}\n  alice:#{old}\nbob:#{old}\n")
+    capture_io { post "/admin/users/delete", { username: "alice" }, "REMOTE_ADDR" => CLIENT_IP }
+    refute Geminabox::Htpasswd.authenticate?("alice", "old-password-1")
+    assert_equal ["bob:#{old}"], htpasswd_lines
+  end
+
   test "the list escapes usernames from a hand-edited file" do
     FileUtils.mkdir_p(File.dirname(htpasswd_file))
     hash = BCrypt::Password.create("pw", cost: BCrypt::Engine::MIN_COST)
