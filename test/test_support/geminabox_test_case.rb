@@ -272,9 +272,14 @@ class Geminabox::TestCase < Minitest::Test
       end
       # Force kill our process to prevent ugly Webrick messages.
       Signal.trap(1) do
-        # Data is only collected if we access the result.
-        SimpleCov.result
-        Process.kill(9, Process.pid)
+        # SimpleCov.result takes a lock, which raises ThreadError in trap
+        # context. Collect it in a thread, and kill even if it raises.
+        Thread.new do
+          # Data is only collected if we access the result.
+          SimpleCov.result
+        ensure
+          Process.kill(9, Process.pid)
+        end
       end
       Rackup::Server.start(server_options)
     end
@@ -290,7 +295,19 @@ class Geminabox::TestCase < Minitest::Test
   end
 
   def stop_app!
-    Process.kill(1, @app_server) if @app_server
+    return unless @app_server
+
+    Process.kill(1, @app_server)
+    begin
+      Timeout.timeout(10) { Process.wait(@app_server) }
+    rescue Timeout::Error
+      Process.kill(9, @app_server)
+      Process.wait(@app_server)
+    end
+  rescue Errno::ESRCH, Errno::ECHILD
+    # Already gone.
+  ensure
+    @app_server = nil
   end
 
   def gem_file(*args)
