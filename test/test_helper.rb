@@ -28,6 +28,15 @@ require_relative '../lib/geminabox'
 # from localhost, so whitelist it. Access tests override this per test.
 ENV["GEMINABOX_IP_WHITELIST"] ||= "127.0.0.1,::1"
 require 'minitest/autorun'
+
+# The login throttle counts per process. Clear it so one test's failed
+# logins never block the next test.
+Minitest::Test.prepend(Module.new do
+  def before_setup
+    super
+    Geminabox::LoginThrottle.reset!
+  end
+end)
 require 'fileutils'
 require_relative 'test_support/gem_factory'
 require_relative 'test_support/geminabox_test_case'

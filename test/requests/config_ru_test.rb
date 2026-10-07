@@ -10,7 +10,8 @@ class ConfigRuTest < Minitest::Test
   include Rack::Test::Methods
 
   CONFIG_RU = File.expand_path("../../config.ru", __dir__)
-  ENV_KEYS = %w[ADMIN_USER ADMIN_PASS SESSION_SECRET GEMINABOX_DATA GEMINABOX_IP_WHITELIST].freeze
+  ENV_KEYS = %w[ADMIN_USER ADMIN_PASS SESSION_SECRET GEMINABOX_DATA GEMINABOX_IP_WHITELIST
+                GEMINABOX_AUTH_MAX_FAILURES].freeze
   OUTSIDE_IP = "198.51.100.30".freeze
 
   def setup
@@ -59,6 +60,17 @@ class ConfigRuTest < Minitest::Test
     ENV["GEMINABOX_DATA"] = "/tmp/geminabox-config-ru-test"
     boot
     assert_equal "/tmp/geminabox-config-ru-test", Geminabox.data
+  end
+
+  test "failed Basic auth on push routes is throttled" do
+    ENV["GEMINABOX_AUTH_MAX_FAILURES"] = "2"
+    basic_authorize "admin", "wrong"
+    2.times { post "/api/v1/gems", "x", "REMOTE_ADDR" => OUTSIDE_IP }
+    assert_equal 401, last_response.status
+
+    basic_authorize "admin", "secret"
+    post "/api/v1/gems", "x", "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 429, last_response.status
   end
 
   test "login without a CSRF token is refused" do

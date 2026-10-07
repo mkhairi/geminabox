@@ -27,6 +27,7 @@ module Geminabox
   autoload :AccessGate,             geminabox_path('access_gate')
   autoload :IpWhitelist,            geminabox_path('ip_whitelist')
   autoload :Htpasswd,               geminabox_path('htpasswd')
+  autoload :LoginThrottle,          geminabox_path('login_throttle')
   autoload :GemStore,               geminabox_path('gem_store')
   autoload :GemStoreError,          geminabox_path('gem_store_error')
   autoload :GemVersion,             geminabox_path('gem_version')

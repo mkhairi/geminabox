@@ -19,11 +19,22 @@ class GeminaboxProtectedRoutes
 
   def call(env)
     request = Rack::Request.new(env)
-    if protected_request?(request)
-      return unauthorized_response unless authorized?(env)
+    return @app.call(env) unless protected_request?(request)
+
+    ip = Geminabox::IpWhitelist.client_ip(env)
+    if (seconds = Geminabox::LoginThrottle.retry_after(ip))
+      return Geminabox::LoginThrottle.too_many_response(ip, seconds)
     end
 
-    @app.call(env)
+    if authorized?(env)
+      Geminabox::LoginThrottle.reset(ip)
+      return @app.call(env)
+    end
+
+    # A request without credentials is a client asking for the challenge,
+    # not a failed login.
+    Geminabox::LoginThrottle.record_failure(ip) if Rack::Auth::Basic::Request.new(env).provided?
+    unauthorized_response
   end
 
   private

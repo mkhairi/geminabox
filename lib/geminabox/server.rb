@@ -147,7 +147,13 @@ module Geminabox
     end
 
     post '/login' do
-      if self.class.admin_credentials_match?(params[:username], params[:password])
+      if (seconds = LoginThrottle.retry_after(client_ip))
+        @login_error = "Too many failed logins from #{client_ip}. Try again in #{seconds} seconds."
+        headers "retry-after" => seconds.to_s
+        status 429
+        erb :login, layout: :layout_login
+      elsif self.class.admin_credentials_match?(params[:username], params[:password])
+        LoginThrottle.reset(client_ip)
         target = session.delete(:return_to)
         session[:logged_in] = true
         session[:username] = params[:username]
@@ -157,6 +163,7 @@ module Geminabox
           redirect url("/")
         end
       else
+        LoginThrottle.record_failure(client_ip)
         @login_error = "Invalid username or password"
         status 401
         erb :login, layout: :layout_login
