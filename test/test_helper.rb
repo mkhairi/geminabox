@@ -27,6 +27,11 @@ require_relative '../lib/geminabox'
 # Every request needs a login, a whitelisted IP, or Basic auth. Tests run
 # from localhost, so whitelist it. Access tests override this per test.
 ENV["GEMINABOX_IP_WHITELIST"] ||= "127.0.0.1,::1"
+# A developer's shell (for example .envrc) can set the admin account. That
+# changes what pages show, so start every run without one. Tests that need
+# it set it in setup.
+ENV.delete("ADMIN_USER")
+ENV.delete("ADMIN_PASS")
 require 'minitest/autorun'
 
 # The login throttle and the untrusted-proxy warnings keep per-process

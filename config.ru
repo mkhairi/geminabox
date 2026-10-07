@@ -8,7 +8,9 @@ class GeminaboxProtectedRoutes
     { methods: %w[GET POST], path: %r{\A/upload/?\z} },
     { methods: %w[POST], path: %r{\A/api/v1/gems/?\z} },
     { methods: %w[DELETE POST], path: %r{\A/gems/.*\.gem\z} },
-    { methods: %w[DELETE POST], path: %r{\A/api/v1/gems/yank/?\z} }
+    { methods: %w[DELETE POST], path: %r{\A/api/v1/gems/yank/?\z} },
+    # Rebuilds the whole index. A whitelisted IP may download, not rebuild.
+    { methods: %w[GET POST], path: %r{\A/reindex/?\z} }
   ].freeze
 
   def initialize(app, username:, password:)

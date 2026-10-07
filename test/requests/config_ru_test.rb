@@ -89,6 +89,31 @@ class ConfigRuTest < Minitest::Test
     assert last_response.ok?
   end
 
+  test "a whitelisted IP cannot reindex, and admin Basic auth can" do
+    ENV["GEMINABOX_IP_WHITELIST"] = OUTSIDE_IP
+    get "/reindex", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert_equal 401, last_response.status
+
+    basic_authorize "admin", "secret"
+    get "/reindex", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert last_response.redirect?
+  end
+
+  test "a whitelisted IP sees no upload or delete buttons, and a logged-in user does" do
+    inject_gems { |builder| builder.gem "foo", version: "1.2.3" }
+    ENV["GEMINABOX_IP_WHITELIST"] = OUTSIDE_IP
+    get "/", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert last_response.ok?
+    refute_includes last_response.body, "delete-form"
+    refute_match(%r{href="[^"]*/upload"}, last_response.body)
+
+    token = login_token
+    post "/login", { username: "admin", password: "secret", authenticity_token: token }, "REMOTE_ADDR" => OUTSIDE_IP
+    get "/", {}, "REMOTE_ADDR" => OUTSIDE_IP
+    assert_includes last_response.body, "delete-form"
+    assert_match(%r{href="[^"]*/upload"}, last_response.body)
+  end
+
   test "CLI clients with Basic auth skip the CSRF token" do
     basic_authorize "admin", "secret"
     post "/api/v1/gems", "not a gem", "REMOTE_ADDR" => OUTSIDE_IP, "CONTENT_TYPE" => "application/octet-stream"

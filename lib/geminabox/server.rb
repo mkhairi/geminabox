@@ -28,8 +28,16 @@ module Geminabox
         IpWhitelist.client_ip(request.env)
       end
 
+      # Upload and delete buttons show to a logged-in user only. A
+      # whitelisted IP may download but not change gems. With no admin
+      # account set, nobody can log in and nothing guards these actions,
+      # so the buttons show to everyone, as in stock geminabox.
+      def can_modify_gems?
+        logged_in? || !self.class.admin_configured?
+      end
+
       def allow_upload?
-        self.class.allow_upload? && request && IpWhitelist.whitelisted?(request.env)
+        self.class.allow_upload? && request && can_modify_gems?
       end
 
       def csrf_tag
@@ -54,13 +62,22 @@ module Geminabox
       # Checks a login against ADMIN_USER and ADMIN_PASS, or the ui_username
       # and ui_password settings when set. Constant-time per field.
       def admin_credentials_match?(username, password)
-        expected_user = respond_to?(:ui_username) ? ui_username : ENV["ADMIN_USER"]
-        expected_pass = respond_to?(:ui_password) ? ui_password : ENV["ADMIN_PASS"]
-        return false if expected_user.to_s.empty? || expected_pass.to_s.empty?
+        return false unless admin_configured?
+
+        expected_user, expected_pass = admin_credentials
 
         user_ok = Rack::Utils.secure_compare(username.to_s, expected_user.to_s)
         pass_ok = Rack::Utils.secure_compare(password.to_s, expected_pass.to_s)
         user_ok && pass_ok
+      end
+
+      def admin_configured?
+        admin_credentials.none? { |value| value.to_s.empty? }
+      end
+
+      def admin_credentials
+        [respond_to?(:ui_username) ? ui_username : ENV["ADMIN_USER"],
+         respond_to?(:ui_password) ? ui_password : ENV["ADMIN_PASS"]]
       end
 
       def fixup_bundler_rubygems!
@@ -179,7 +196,7 @@ module Geminabox
       @gems = load_gems
       @index_gems = index_gems(@gems)
       @allow_upload = allow_upload?
-      @allow_delete = self.class.allow_delete? && IpWhitelist.whitelisted?(request.env)
+      @allow_delete = self.class.allow_delete? && can_modify_gems?
       erb :index
     end
 
@@ -279,7 +296,7 @@ module Geminabox
     get '/gems/:gemname' do
       gems = Hash[load_gems.by_name]
       @gem = gems[params[:gemname]]
-      @allow_delete = self.class.allow_delete? && IpWhitelist.whitelisted?(request.env)
+      @allow_delete = self.class.allow_delete? && can_modify_gems?
       halt 404 unless @gem
       content_type :html
       erb :gem
