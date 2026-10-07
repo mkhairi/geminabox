@@ -67,11 +67,8 @@ module Geminabox
       auth = Rack::Auth::Basic::Request.new(env)
       return false unless auth.provided? && auth.basic?
 
-      if Server.admin_credentials_match?(*auth.credentials) ||
-         (read_only_request?(request) && Htpasswd.authenticate?(*auth.credentials))
-        LoginThrottle.reset(ip)
-        return true
-      end
+      return true if Server.admin_credentials_match?(*auth.credentials)
+      return true if read_only_request?(request) && Htpasswd.authenticate?(*auth.credentials)
 
       # The username is client input. inspect escapes control characters, so
       # it cannot forge log lines. The password is never logged.

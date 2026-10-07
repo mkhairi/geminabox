@@ -153,7 +153,6 @@ module Geminabox
         status 429
         erb :login, layout: :layout_login
       elsif self.class.admin_credentials_match?(params[:username], params[:password])
-        LoginThrottle.reset(client_ip)
         target = session.delete(:return_to)
         session[:logged_in] = true
         session[:username] = params[:username]

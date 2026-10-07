@@ -26,10 +26,7 @@ class GeminaboxProtectedRoutes
       return Geminabox::LoginThrottle.too_many_response(ip, seconds)
     end
 
-    if authorized?(env)
-      Geminabox::LoginThrottle.reset(ip)
-      return @app.call(env)
-    end
+    return @app.call(env) if authorized?(env)
 
     # A request without credentials is a client asking for the challenge,
     # not a failed login.

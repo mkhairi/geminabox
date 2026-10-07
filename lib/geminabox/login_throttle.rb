@@ -8,6 +8,10 @@ module Geminabox
   # GEMINABOX_AUTH_BLOCK_SECONDS (default 300) block the IP for that many
   # seconds from the moment it reached the limit.
   #
+  # A successful login never clears failures. Otherwise a valid htpasswd
+  # login, which anyone with install access has, can reset failed admin
+  # guesses and remove the limit. Failures expire when the window ends.
+  #
   # Counts live in this process only. Each worker process counts on its
   # own, and a restart clears every block.
   module LoginThrottle
@@ -48,10 +52,6 @@ module Geminabox
         entry[:blocked_until] = now + block_seconds
         warn "[geminabox] ip=#{ip} blocked for #{block_seconds}s after #{entry[:count]} failed logins."
       end
-    end
-
-    def reset(ip)
-      @mutex.synchronize { @entries.delete(ip.to_s) }
     end
 
     def reset!

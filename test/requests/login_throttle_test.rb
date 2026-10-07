@@ -3,9 +3,11 @@ require 'minitest'
 require 'minitest/mock'
 require 'rack/test'
 require 'rack/session'
+require 'bcrypt'
 
 # Repeated failed logins from one IP get 429 until the block ends. The
-# gate's Basic auth and the /login form share one count per IP.
+# gate's Basic auth, the /login form, and config.ru's push routes share
+# one count per IP.
 class LoginThrottleTest < Minitest::Test
   include Rack::Test::Methods
 
@@ -78,16 +80,22 @@ class LoginThrottleTest < Minitest::Test
     end
   end
 
-  test "a successful login resets the count" do
+  test "a successful login does not clear earlier failures" do
+    # A valid low-privilege htpasswd login must not reset failed admin
+    # guesses, or guessing never hits the limit.
+    path = File.join(Geminabox.data, "config", "htpasswd")
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, "dev:#{BCrypt::Password.create('pw-dev', cost: BCrypt::Engine::MIN_COST)}\n")
+
     fail_basic(ATTACKER_IP, 2)
-    basic_authorize "admin", "secret"
+    basic_authorize "dev", "pw-dev"
     get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => ATTACKER_IP
     assert last_response.ok?
 
-    fail_basic(ATTACKER_IP, 2)
-    basic_authorize "admin", "secret"
+    fail_basic(ATTACKER_IP, 1)
+    basic_authorize "dev", "pw-dev"
     get "/gems/foo-1.2.3.gem", {}, "REMOTE_ADDR" => ATTACKER_IP
-    assert last_response.ok?
+    assert_equal 429, last_response.status
   end
 
   test "failed form logins count, and a blocked form login gets 429" do
