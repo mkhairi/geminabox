@@ -1,7 +1,6 @@
 pkg
 .DS_Store
 tmp/restart.txt
-Gemfile.lock
 .bundle
 .byebug_history
 vendor/bundle

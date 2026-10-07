@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Build the geminabox Docker image and push it to depot.labs.my.
 #
-# The build context is `git archive HEAD` plus Gemfile.lock, never the
-# working tree. Untracked files, such as keys or .envrc, cannot reach the
+# The build context is `git archive HEAD`, never the working tree. Untracked files, such as keys or .envrc, cannot reach the
 # image, and the image matches the commit in its tag.
 #
 # Tags: <version>-<git sha> and latest. Version comes from
@@ -22,7 +21,7 @@ Usage: bin/build [--no-push]
   --no-push   Build and tag locally. Do not push.
   -h, --help  Show this help.
 
-The image holds HEAD plus Gemfile.lock. Commit changes before building.
+The image holds HEAD only. Commit changes before building.
 
 Env: IMAGE (default depot.labs.my/geminabox), PLATFORM (default linux/amd64).
 EOF
@@ -42,9 +41,9 @@ cd "$(dirname "$0")/.."
 image="${IMAGE:-depot.labs.my/geminabox}"
 platform="${PLATFORM:-linux/amd64}"
 
-# Gemfile.lock is git-ignored, but the Dockerfile installs it frozen.
-if [[ ! -f Gemfile.lock ]]; then
-  echo "bin/build: Gemfile.lock is missing. Run: bundle install" >&2
+# The Dockerfile installs Gemfile.lock frozen, so it must be in the commit.
+if ! git ls-files --error-unmatch Gemfile.lock >/dev/null 2>&1; then
+  echo "bin/build: Gemfile.lock is not committed. Run: bundle install && git add Gemfile.lock && git commit" >&2
   exit 1
 fi
 
@@ -59,21 +58,16 @@ fi
 context="$(mktemp -d)"
 trap 'rm -rf "$context"' EXIT
 git archive HEAD | tar -x -C "$context"
-cp Gemfile.lock "$context/"
 
 version="$(ruby -e 'require ARGV[0]; print Geminabox::VERSION' "$context/lib/geminabox/version.rb")"
 sha="$(git rev-parse --short HEAD)"
 tag="${version}-${sha}"
-# Gemfile.lock is git-ignored, so the commit alone does not pin the gems.
-# The label records which lockfile went into the image.
-lock_sha="$(sha256sum Gemfile.lock | cut -d' ' -f1)"
 
 echo "Building ${image}:${tag} for ${platform}"
 docker build \
   --platform "$platform" \
   --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
   --label "org.opencontainers.image.version=${version}" \
-  --label "my.labs.geminabox.gemfile-lock-sha256=${lock_sha}" \
   -t "${image}:${tag}" \
   -t "${image}:latest" \
   "$context"
