@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Build the geminabox Docker image and push it to depot.labs.my.
 #
+# The build context is `git archive HEAD` plus Gemfile.lock, never the
+# working tree. Untracked files, such as keys or .envrc, cannot reach the
+# image, and the image matches the commit in its tag.
+#
 # Tags: <version>-<git sha> and latest. Version comes from
 # lib/geminabox/version.rb.
 #
@@ -13,22 +17,21 @@ set -euo pipefail
 
 usage() {
   cat <<EOF
-Usage: bin/build [--no-push] [--allow-dirty]
+Usage: bin/build [--no-push]
 
-  --no-push      Build and tag locally. Do not push.
-  --allow-dirty  Build with uncommitted changes. The tag gets a -dirty suffix.
-  -h, --help     Show this help.
+  --no-push   Build and tag locally. Do not push.
+  -h, --help  Show this help.
+
+The image holds HEAD plus Gemfile.lock. Commit changes before building.
 
 Env: IMAGE (default depot.labs.my/geminabox), PLATFORM (default linux/amd64).
 EOF
 }
 
 push=1
-allow_dirty=0
 for arg in "$@"; do
   case "$arg" in
     --no-push) push=0 ;;
-    --allow-dirty) allow_dirty=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "bin/build: unknown option: $arg" >&2; usage >&2; exit 2 ;;
   esac
@@ -45,30 +48,35 @@ if [[ ! -f Gemfile.lock ]]; then
   exit 1
 fi
 
-# The image is built from the working tree, so a dirty tree gives an image
-# that matches no commit.
-suffix=""
+# Uncommitted changes are not in the archive. Refuse rather than build an
+# image that differs from what the developer sees.
 if ! git diff --quiet HEAD --; then
-  if [[ $allow_dirty -eq 0 ]]; then
-    echo "bin/build: uncommitted changes in tracked files. Commit them, or rerun with --allow-dirty." >&2
-    git status --short --untracked-files=no >&2
-    exit 1
-  fi
-  suffix="-dirty"
+  echo "bin/build: uncommitted changes in tracked files are not built. Commit or stash them first." >&2
+  git status --short --untracked-files=no >&2
+  exit 1
 fi
 
-version="$(ruby -e 'require "./lib/geminabox/version"; print Geminabox::VERSION')"
+context="$(mktemp -d)"
+trap 'rm -rf "$context"' EXIT
+git archive HEAD | tar -x -C "$context"
+cp Gemfile.lock "$context/"
+
+version="$(ruby -e 'require ARGV[0]; print Geminabox::VERSION' "$context/lib/geminabox/version.rb")"
 sha="$(git rev-parse --short HEAD)"
-tag="${version}-${sha}${suffix}"
+tag="${version}-${sha}"
+# Gemfile.lock is git-ignored, so the commit alone does not pin the gems.
+# The label records which lockfile went into the image.
+lock_sha="$(sha256sum Gemfile.lock | cut -d' ' -f1)"
 
 echo "Building ${image}:${tag} for ${platform}"
 docker build \
   --platform "$platform" \
   --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
   --label "org.opencontainers.image.version=${version}" \
+  --label "my.labs.geminabox.gemfile-lock-sha256=${lock_sha}" \
   -t "${image}:${tag}" \
   -t "${image}:latest" \
-  .
+  "$context"
 
 if [[ $push -eq 0 ]]; then
   echo "Built ${image}:${tag} and ${image}:latest. Not pushed (--no-push)."
