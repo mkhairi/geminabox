@@ -2,6 +2,11 @@ source "https://rubygems.org"
 
 gemspec
 
+# The server config.ru runs on. The Docker image starts it with `rackup`
+# and installs no development or test gems.
+gem 'rackup'
+gem 'webrick'
+
 group :development do
   gem 'byebug'
   gem 'rubocop', '~> 1.91.0'
@@ -20,7 +25,6 @@ group :test do
   end
   gem 'minitest-reporters'
   gem 'rack-test'
-  gem 'rackup'
   gem 'rake'
 
   gem 'capybara'

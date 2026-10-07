@@ -17,3 +17,8 @@ test/fixtures/*.fixture
 
 /coverage
 test/fixtures/fake_home_path/.cache/
+
+# Local secrets and shell env. Never commit them.
+.envrc
+.env
+.env.*
