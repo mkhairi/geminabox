@@ -22,9 +22,9 @@ module Geminabox
   module LoginThrottle
     DEFAULT_MAX_FAILURES = 10
     DEFAULT_BLOCK_SECONDS = 300
-    # Past this many entries, expired ones go first, then the oldest
-    # unblocked ones. Blocked entries go last, so a flood of new IPs cannot
-    # lift an existing block.
+    # Past this many entries, expired ones go first, then unblocked ones
+    # with the fewest failures. Blocked entries go last, so a flood of new
+    # IPs cannot lift an existing block or reset a partial count.
     MAX_TRACKED = 10_000
 
     @mutex = Mutex.new
@@ -125,7 +125,11 @@ module Geminabox
       # Free a tenth at once, so a flood of new IPs sorts rarely.
       excess = [@entries.size - max_tracked + 1, max_tracked / 10].max
 
-      victims = @entries.sort_by { |_, e| [e[:blocked_until] ? 1 : 0, e[:blocked_until] || e[:first_at]] }
+      # Fewest failures go first, so a flood of one-off failures evicts
+      # itself and not an attacker's partial count.
+      victims = @entries.sort_by do |_, e|
+        e[:blocked_until] ? [1, 0, e[:blocked_until]] : [0, e[:count], e[:first_at]]
+      end
       victims.first(excess).each { |key, _| @entries.delete(key) }
     end
 

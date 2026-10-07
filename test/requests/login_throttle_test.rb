@@ -134,6 +134,15 @@ class LoginThrottleTest < Minitest::Test
     end
   end
 
+  test "filling the tracker keeps partial counts and drops one-off failures first" do
+    2.times { Geminabox::LoginThrottle.record_failure(ATTACKER_IP) }
+    Geminabox::LoginThrottle.stub(:max_tracked, 5) do
+      20.times { |i| Geminabox::LoginThrottle.record_failure("203.0.113.#{i + 1}") }
+      Geminabox::LoginThrottle.record_failure(ATTACKER_IP)
+      assert Geminabox::LoginThrottle.retry_after(ATTACKER_IP)
+    end
+  end
+
   test "an invalid limit falls back to the default" do
     ENV["GEMINABOX_AUTH_MAX_FAILURES"] = "lots"
     assert_equal Geminabox::LoginThrottle::DEFAULT_MAX_FAILURES, Geminabox::LoginThrottle.max_failures
